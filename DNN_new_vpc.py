@@ -13,8 +13,9 @@ import pwd
 import pdb
 import grp
 
-INPUT_PATH = "SimBoost/data/davis_cv2.csv"
+INPUT_PATH = "SimBoost/data/davis_cv_nmlzd.csv"
 LOG_DIR = "logs/"
+SUMM_DIR = "summary/"
 
 #uid = pwd.getpwnam("simonfqy").pw_uid
 #gid = grp.getgrnam("def-cherkaso").gr_gid
@@ -44,8 +45,8 @@ VALDN_RTO = 0.1
 BATCH_SIZE = 32
 PATIENCE = 3
 
-train_obs = [3200, 3200, 3200, 24045, 24045, 24045, 24044, 24045]
-test_obs = [640, 640, 640, 6011, 6011, 6011, 6012, 6011]
+train_obs = [24045, 24045, 24045, 24044, 24045]
+test_obs = [6011, 6011, 6011, 6012, 6011]
 fold_index = [0]
 
 def dataset_input_fn(loaded_data, testing, perform_shuffle=False, num_epoch=1, 
@@ -95,11 +96,11 @@ def dataset_input_fn(loaded_data, testing, perform_shuffle=False, num_epoch=1,
   dataset = dataset.batch(BATCH_SIZE)
   return dataset, total_take * num_epoch
 
-def train_eval(loaded_data):    
+def train_eval(loaded_data, fold_idx, summ_dir):    
   handle = tf.placeholder(tf.string, shape=[])
   mode = tf.placeholder(tf.string, shape=[])
   train_data, train_size = dataset_input_fn(loaded_data, False, 
-    perform_shuffle=False, num_epoch = 2)
+    perform_shuffle=False, num_epoch = 22)
   # It could be either validation data set or test data set, depending on other params.
   validn_data, validn_size = dataset_input_fn(loaded_data, True)
   
@@ -128,76 +129,92 @@ def train_eval(loaded_data):
   #if mode == tf.estimator.ModeKeys.PREDICT:
   #  return tf.estimator.EstimatorSpec(mode, predictions={'value': predictions})
 
-  loss = tf.losses.mean_squared_error(labels, predictions)
+  loss1 = tf.losses.mean_squared_error(labels, predictions)
+  tf.summary.scalar("loss1", loss1)
   eval_metric_ops = {
     "rmse": tf.sqrt(tf.losses.mean_squared_error(labels, predictions))
   }
-  
-  train_itr = train_data.make_one_shot_iterator()
+  #train_itr = train_data.make_one_shot_iterator()
+  train_itr = train_data.make_initializable_iterator()
   validn_itr = validn_data.make_initializable_iterator()
   
   optimizer = tf.train.AdamOptimizer()
-  train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+  train_op = optimizer.minimize(loss1, global_step=tf.train.get_global_step())
+  
+  merged_summ_op = tf.summary.merge_all()
 
   init = tf.global_variables_initializer()
 
   train_steps = math.floor(train_size/BATCH_SIZE)
   # validn_steps or test steps, depending on other parameters.
   validn_steps = math.floor(validn_size/BATCH_SIZE)
+  saver = tf.train.Saver(max_to_keep=3)  
   
   with tf.Session() as sess:    
-    #log_file = open('log.txt', 'w+')
+    log_file = open("log.txt", "a")
     # For one fold in the cross validation.    
-    #sys.stdout = log_file
-    
+    sys.stdout = log_file
+    print("\nStarting fold number: {:d}".format(fold_idx+1))
+    log_file.close()    
     sess.run(init)
     training_handle = sess.run(train_itr.string_handle())
     validation_handle = sess.run(validn_itr.string_handle())
+    sess.run(train_itr.initializer)
     best_rmse = 100000000000
     best_training_step = 0
     wait_time = 0
+    #summary_writer = tf.summary.FileWriter(logdir=summ_dir, graph=sess.graph)
+
     for step in range(train_steps):
-      try:
-        sess.run(train_op, feed_dict={handle: training_handle, mode: "train"})
-          
-      except tf.errors.OutOfRangeError:
-        print("Reached the end of the data set.")
-        
-      if step % 30 == 29:
+      
+      #_, summary= sess.run([train_op, merged_summ_op], feed_dict= {handle: training_handle, mode: "train"})
+      sess.run(train_op, feed_dict={handle: training_handle, mode: "train"})
+      
+      #if step % 5 == 0:
+      #  summary_writer.add_summary(summary, step)
+
+      if step % 700 == 699:
         sess.run(validn_itr.initializer)
         summ = 0
         count = 0
         for i in range(validn_steps):
-          ev = sess.run(eval_metric_ops, feed_dict={handle: validation_handle,
-           mode: "eval"})
+          ev = sess.run(eval_metric_ops, feed_dict={handle: validation_handle, mode: "eval"})
           summ += ev["rmse"]
           count = i + 1
         mean_rmse = summ/count
+        log_file = open("log.txt", "a")
+        sys.stdout = log_file
         print("RMSE: {0:f}".format(mean_rmse))
         if mean_rmse <= best_rmse:
           best_rmse = mean_rmse
           best_training_step = step + 1
           wait_time = 0
-          # Save the parameters that yield the best results.
+          saver.save(sess, save_path=LOG_DIR, global_step=step)
         else:
           wait_time += 1
-          if (wait_time > patience):
+          if (wait_time > PATIENCE):
             print("The best training step is: {:d} \n".format(best_training_step))
             break
-    #log_file.close()
-    #sys.stdout = sys.__stdout__      
+        log_file.close()
+    #summary_writer.close()
+    log_file.close()
+    sys.stdout = sys.__stdout__      
 
 def main():
   loaded_data = pd.read_csv(INPUT_PATH, dtype = np.float64, header=None)
   labels = (loaded_data.iloc[:,[98]]).values
   features = (loaded_data.iloc[:, range(98)]).values
   loaded_data = tf.contrib.data.Dataset.from_tensor_slices((features, labels))
-  for k in range(3):
-    ''' 
+  log_file = open('log.txt', 'w+')
+  log_file.close()
+  for k in range(5):    
     if tf.gfile.Exists(LOG_DIR):
       tf.gfile.DeleteRecursively(LOG_DIR)
-    tf.gfile.MakeDirs(LOG_DIR)'''
-    train_eval(loaded_data)
+    #if tf.gfile.Exists(SUMM_DIR):
+    #  tf.gfile.DeleteRecursively(SUMM_DIR)
+    tf.gfile.MakeDirs(LOG_DIR)
+    #tf.gfile.MakeDirs(SUMM_DIR)
+    train_eval(loaded_data, k, SUMM_DIR)
     fold_index[0] += 1
 
 if __name__ == '__main__':
