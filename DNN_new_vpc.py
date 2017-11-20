@@ -113,7 +113,19 @@ def train_eval(loaded_data, fold_idx, summ_dir):
   feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
   net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)  
   #regularizer = tf.contrib.layers.l2_regularizer(scale=0.05)
+  
+  for units in [3]:
+    if mode == "train":
+      net = tf.layers.dropout(net, rate=0.5, training=True)
+    else:
+      net = tf.layers.dropout(net, rate=0.5, training=False)      
+    net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
+    if mode == "train":
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+    else:
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
 
+  '''
   for units in [3]:
     if mode == "train":
       net = tf.layers.dropout(net, rate=0.5, training=True)
@@ -122,7 +134,7 @@ def train_eval(loaded_data, fold_idx, summ_dir):
     net = tf.layers.dense(net, units=units, activation=tf.nn.tanh
                           #,kernel_regularizer=regularizer
                           )
-  
+  '''
   outp = tf.layers.dense(net, 1, activation=None
                          #, kernel_regularizer=regularizer
                          )
