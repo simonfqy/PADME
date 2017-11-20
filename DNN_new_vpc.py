@@ -38,12 +38,14 @@ FEATURES = ["d.n.obs","d.ave.sim","d.hist.sim1","d.hist.sim2","d.hist.sim3",
 "t.bt","t.ev","t.pagerank","t.cl2","t.pr","t.mf1","t.mf2","t.mf3","t.mf4","t.mf5",
 "t.mf6","t.mf7","t.mf8","t.mf9","t.mf10","d.t.ave","t.d.ave"]
 # signals whether we are doing early stopping or not.
-VALIDATING = True
-#VALIDATING = False
+#VALIDATING = True
+VALIDATING = False
 # The ratio of the validation set in the training set.
 VALDN_RTO = 0.1
+OPTIMAL_STEP = 11900
 BATCH_SIZE = 32
 PATIENCE = 3
+
 
 train_obs = [24045, 24045, 24045, 24044, 24045]
 test_obs = [6011, 6011, 6011, 6012, 6011]
@@ -76,9 +78,9 @@ def dataset_input_fn(loaded_data, testing, perform_shuffle=False, num_epoch=1,
 
   total_skip = base_skip + extra_skip
 
-  print("fold_index: {:d} \n".format(fold_index[0]))
-  print("total_take: {:d} \n".format(total_take))
-  print("total_skip: {:d} \n".format(total_skip))
+  print("fold_index: {:d} ".format(fold_index[0]))
+  print("total_take: {:d} ".format(total_take))
+  print("total_skip: {:d} ".format(total_skip))
 
   dataset = (loaded_data.skip(total_skip).take(total_take).map(decode_line, 
     num_threads = 8, output_buffer_size=512)) 
@@ -100,7 +102,7 @@ def train_eval(loaded_data, fold_idx, summ_dir):
   handle = tf.placeholder(tf.string, shape=[])
   mode = tf.placeholder(tf.string, shape=[])
   train_data, train_size = dataset_input_fn(loaded_data, False, 
-    perform_shuffle=False, num_epoch = 22)
+    perform_shuffle=False, num_epoch = 18)
   # It could be either validation data set or test data set, depending on other params.
   validn_data, validn_size = dataset_input_fn(loaded_data, True)
   
@@ -145,10 +147,14 @@ def train_eval(loaded_data, fold_idx, summ_dir):
 
   init = tf.global_variables_initializer()
 
-  train_steps = math.floor(train_size/BATCH_SIZE)
+  train_steps = math.ceil(train_size/BATCH_SIZE)
+  #if not VALIDATING:
+  #  train_steps = min(train_steps, OPTIMAL_STEP)
   # validn_steps or test steps, depending on other parameters.
-  validn_steps = math.floor(validn_size/BATCH_SIZE)
-  saver = tf.train.Saver(max_to_keep=3)  
+  validn_steps = math.ceil(validn_size/BATCH_SIZE)
+  saver = tf.train.Saver(max_to_keep=3)
+  print("training steps: {:d} ".format(train_steps))
+  print("validation steps: {:d} ".format(validn_steps))    
   
   with tf.Session() as sess:    
     log_file = open("log.txt", "a")
@@ -173,29 +179,45 @@ def train_eval(loaded_data, fold_idx, summ_dir):
       #if step % 5 == 0:
       #  summary_writer.add_summary(summary, step)
 
-      if step % 700 == 699:
-        sess.run(validn_itr.initializer)
-        summ = 0
-        count = 0
-        for i in range(validn_steps):
-          ev = sess.run(eval_metric_ops, feed_dict={handle: validation_handle, mode: "eval"})
-          summ += ev["rmse"]
-          count = i + 1
-        mean_rmse = summ/count
-        log_file = open("log.txt", "a")
-        sys.stdout = log_file
-        print("RMSE: {0:f}".format(mean_rmse))
-        if mean_rmse <= best_rmse:
-          best_rmse = mean_rmse
-          best_training_step = step + 1
-          wait_time = 0
-          saver.save(sess, save_path=LOG_DIR, global_step=step)
-        else:
-          wait_time += 1
-          if (wait_time > PATIENCE):
-            print("The best training step is: {:d} \n".format(best_training_step))
-            break
-        log_file.close()
+      if VALIDATING:
+        if step % 700 == 699:
+          sess.run(validn_itr.initializer)
+          summ = 0
+          count = 0
+          for i in range(validn_steps):
+            ev = sess.run(eval_metric_ops, feed_dict={handle: validation_handle, mode: "eval"})
+            summ += ev["rmse"]
+            count = i + 1
+          mean_rmse = summ/count
+          log_file = open("log.txt", "a")
+          sys.stdout = log_file
+          print("RMSE: {0:f}".format(mean_rmse))
+          if mean_rmse <= best_rmse:
+            best_rmse = mean_rmse
+            best_training_step = step + 1
+            wait_time = 0
+            saver.save(sess, save_path=LOG_DIR, global_step=step)
+          else:
+            wait_time += 1
+            if (wait_time > PATIENCE):
+              print("The best training step is: {:d} \n".format(best_training_step))
+              break
+          log_file.close()
+      else:
+        if step % 751 == 750:
+          sess.run(validn_itr.initializer)
+          summ = 0
+          count = 0
+          for i in range(validn_steps):
+            ev = sess.run(eval_metric_ops, feed_dict={handle: validation_handle, mode: "eval"})
+            summ += ev["rmse"]
+            count = i + 1
+          mean_rmse = summ/count
+          log_file = open("log.txt", "a")
+          sys.stdout = log_file
+          print("RMSE: {0:f}".format(mean_rmse))
+          log_file.close()
+
     #summary_writer.close()
     log_file.close()
     sys.stdout = sys.__stdout__      
