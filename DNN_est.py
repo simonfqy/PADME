@@ -46,7 +46,7 @@ def main():
   #os.chown(LOG_DIR, uid, gid)
 
   fold_index = [0]
-  training_epochs = 16
+  training_epochs = 36
 
   loaded_data = pd.read_csv(INPUT_PATH, dtype = np.float64, header=None)
   labels = (loaded_data.iloc[:,[98]]).values
@@ -57,12 +57,12 @@ def main():
     
     feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
     net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)
-    
+    '''
     if mode == tf.estimator.ModeKeys.TRAIN:
       net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
     else:
       net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
-    '''
+    
     for units in [3]:      
       net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
       if mode == tf.estimator.ModeKeys.TRAIN:
@@ -70,12 +70,14 @@ def main():
       else:
         net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
     '''
-    for units in [3]:
+    for units in [20, 10, 10]:
       if mode == tf.estimator.ModeKeys.TRAIN:
+        net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
         net = tf.layers.dropout(net, rate=0.5, training=True)
       else:
+        net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
         net = tf.layers.dropout(net, rate=0.5, training=False)      
-      net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
+      net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
     '''
     if mode == tf.estimator.ModeKeys.TRAIN:
       net = tf.layers.dropout(net, rate=0.5, training=True)
@@ -143,7 +145,7 @@ def main():
 
   def train_input_fn():
     #fold_index[0] += 1
-    return dataset_input_fn(loaded_data, False, perform_shuffle=True, num_epoch = 1)
+    return dataset_input_fn(loaded_data, False, perform_shuffle=True, num_epoch = 2)
 
   def test_input_fn():
     return dataset_input_fn(loaded_data, True)
@@ -160,15 +162,15 @@ def main():
     print("\nStarting fold number: {:d}".format(i+1))
     log_file.close()
     sys.stdout = sys.__stdout__
-    for j in range(training_epochs):    
-      regressor.train(input_fn = train_input_fn)
+    for j in range(int(round(training_epochs/2))):    
+      regressor.train(input_fn=train_input_fn)
       ev = regressor.evaluate(input_fn=test_input_fn)
       #RMSE = np.sqrt(ev["average_loss"])
       RMSE = ev["rmse"]
       
       log_file = open("log.txt", "a")
       sys.stdout = log_file
-      print("Epoch {:d}, RMSE: {:f}".format(j+1 , RMSE))
+      print("Epoch {:d}, RMSE: {:f}".format((j+1)*2 , RMSE))
       log_file.close()
       sys.stdout = sys.__stdout__
     fold_index[0] += 1
