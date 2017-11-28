@@ -143,8 +143,6 @@ def main():
         for _ in range(num_epoch - 1):
           dataset1 = dataset_orig.shuffle(buffer_size=512)
           dataset = dataset.concatenate(dataset1)          
-      #print("Performed shuffling. \n")
-    #print("Not performed shuffling. \n")
     else:
       dataset = dataset.repeat(num_epoch)
 
@@ -154,7 +152,6 @@ def main():
     return batch_features, batch_labels
 
   def train_input_fn():
-    #fold_index[0] += 1
     return dataset_input_fn(loaded_data, False, perform_shuffle=True, num_epoch = 3)
 
   def test_input_fn():
@@ -197,10 +194,6 @@ def main():
           break
 
     fold_index[0] += 1
-    '''
-    if tf.gfile.Exists(LOG_DIR):
-      tf.gfile.DeleteRecursively(LOG_DIR)
-    tf.gfile.MakeDirs(LOG_DIR)
-    '''
+    
 if __name__ == '__main__':
   main()
