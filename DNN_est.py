@@ -12,7 +12,7 @@ import pwd
 import pdb
 import grp
 
-INPUT_PATH = "SimBoost/data/davis_cv2.csv"
+INPUT_PATH = "SimBoost/data/davis_cv_nmlzd.csv"
 LOG_DIR = "logs/"
 PATIENCE = 3
 
@@ -41,11 +41,9 @@ train_obs = [24045, 24045, 24045, 24044, 24045]
 test_obs = [6011, 6011, 6011, 6012, 6011]
 
 def main():
-  
-  #os.chown(LOG_DIR, uid, gid)
 
   fold_index = [0]
-  training_epochs = 36
+  training_epochs = 42
 
   loaded_data = pd.read_csv(INPUT_PATH, dtype = np.float64, header=None)
   labels = (loaded_data.iloc[:,[98]]).values
@@ -101,6 +99,7 @@ def main():
       return tf.estimator.EstimatorSpec(mode, predictions={'value': predictions})
 
     loss = tf.losses.mean_squared_error(labels, predictions)
+    tf.summary.scalar('loss', loss)
 
     if mode == tf.estimator.ModeKeys.TRAIN:
       optimizer = tf.train.AdamOptimizer()
@@ -163,7 +162,7 @@ def main():
   regressor = tf.estimator.Estimator(model_fn = my_model, model_dir=LOG_DIR) 
   #log_file = open('log.txt', 'w+')
   
-  for i in range(1):
+  for i in range(5):
     if tf.gfile.Exists(LOG_DIR):
       tf.gfile.DeleteRecursively(LOG_DIR)
     tf.gfile.MakeDirs(LOG_DIR)
