@@ -12,8 +12,9 @@ import pwd
 import pdb
 import grp
 
-INPUT_PATH = "SimBoost/data/davis_cv_nmlzd.csv"
+INPUT_PATH = "SimBoost/data/davis_cv2.csv"
 LOG_DIR = "logs/"
+PATIENCE = 3
 
 #uid = pwd.getpwnam("simonfqy").pw_uid
 #gid = grp.getgrnam("def-cherkaso").gr_gid
@@ -40,9 +41,7 @@ train_obs = [24045, 24045, 24045, 24044, 24045]
 test_obs = [6011, 6011, 6011, 6012, 6011]
 
 def main():
-  if tf.gfile.Exists(LOG_DIR):
-    tf.gfile.DeleteRecursively(LOG_DIR)
-  tf.gfile.MakeDirs(LOG_DIR)
+  
   #os.chown(LOG_DIR, uid, gid)
 
   fold_index = [0]
@@ -53,16 +52,22 @@ def main():
   features = (loaded_data.iloc[:, range(98)]).values
   loaded_data = tf.contrib.data.Dataset.from_tensor_slices((features, labels))
 
+  def _add_hidden_layer_summary(value, tag):
+    tf.summary.scalar('%s/fraction_of_zero_values' % tag, tf.nn.zero_fraction(value))
+    tf.summary.histogram('%s/activation' % tag, value)
+
   def my_model(features, labels, mode):
     
     feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
     net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)
-    '''
+    
     if mode == tf.estimator.ModeKeys.TRAIN:
       net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+      net = tf.layers.dropout(net, rate=0.5, training=True)
     else:
       net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
-    
+      net = tf.layers.dropout(net, rate=0.5, training=False)
+    '''
     for units in [3]:      
       net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
       if mode == tf.estimator.ModeKeys.TRAIN:
@@ -70,14 +75,19 @@ def main():
       else:
         net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
     '''
-    for units in [20, 10, 10]:
-      if mode == tf.estimator.ModeKeys.TRAIN:
-        net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
-        net = tf.layers.dropout(net, rate=0.5, training=True)
-      else:
-        net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
-        net = tf.layers.dropout(net, rate=0.5, training=False)      
-      net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
+    for layer_id, num_hidden_units in enumerate([30, 20, 10]):
+      with tf.variable_scope('hiddenlayer_%d' % layer_id, 
+        values=(net,)) as hidden_layer_scope:
+        net = tf.layers.dense(net, units=num_hidden_units, activation=tf.nn.relu,
+          name=hidden_layer_scope)
+        _add_hidden_layer_summary(net, hidden_layer_scope.name)
+        if mode == tf.estimator.ModeKeys.TRAIN:
+          net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+          #net = tf.layers.dropout(net, rate=0.5, training=True)
+        else:
+          net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
+          #net = tf.layers.dropout(net, rate=0.5, training=False)      
+        
     '''
     if mode == tf.estimator.ModeKeys.TRAIN:
       net = tf.layers.dropout(net, rate=0.5, training=True)
@@ -145,7 +155,7 @@ def main():
 
   def train_input_fn():
     #fold_index[0] += 1
-    return dataset_input_fn(loaded_data, False, perform_shuffle=True, num_epoch = 2)
+    return dataset_input_fn(loaded_data, False, perform_shuffle=True, num_epoch = 3)
 
   def test_input_fn():
     return dataset_input_fn(loaded_data, True)
@@ -154,15 +164,20 @@ def main():
   feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
   
   regressor = tf.estimator.Estimator(model_fn = my_model, model_dir=LOG_DIR) 
-  log_file = open('log.txt', 'w+')
+  #log_file = open('log.txt', 'w+')
   
-  for i in range(5):
+  for i in range(1):
+    if tf.gfile.Exists(LOG_DIR):
+      tf.gfile.DeleteRecursively(LOG_DIR)
+    tf.gfile.MakeDirs(LOG_DIR)
     log_file = open("log.txt", "a")   
     sys.stdout = log_file
     print("\nStarting fold number: {:d}".format(i+1))
     log_file.close()
     sys.stdout = sys.__stdout__
-    for j in range(int(round(training_epochs/2))):    
+    best_rmse = 1000000000000
+    wait_time = 0
+    for j in range(int(round(training_epochs/3))):    
       regressor.train(input_fn=train_input_fn)
       ev = regressor.evaluate(input_fn=test_input_fn)
       #RMSE = np.sqrt(ev["average_loss"])
@@ -170,14 +185,22 @@ def main():
       
       log_file = open("log.txt", "a")
       sys.stdout = log_file
-      print("Epoch {:d}, RMSE: {:f}".format((j+1)*2 , RMSE))
+      print("Epoch {:d}, RMSE: {:f}".format((j+1)*3 , RMSE))
       log_file.close()
       sys.stdout = sys.__stdout__
-    fold_index[0] += 1
+      if best_rmse >= RMSE:
+        best_rmse = RMSE
+        wait_time = 0
+      else:
+        wait_time += 1
+        if (wait_time > PATIENCE):
+          break
 
+    fold_index[0] += 1
+    '''
     if tf.gfile.Exists(LOG_DIR):
       tf.gfile.DeleteRecursively(LOG_DIR)
     tf.gfile.MakeDirs(LOG_DIR)
-
+    '''
 if __name__ == '__main__':
   main()
