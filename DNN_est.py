@@ -43,7 +43,7 @@ test_obs = [6011, 6011, 6011, 6012, 6011]
 def main():
 
   fold_index = [0]
-  training_epochs = 42
+  training_epochs = 39
 
   loaded_data = pd.read_csv(INPUT_PATH, dtype = np.float64, header=None)
   labels = (loaded_data.iloc[:,[98]]).values
@@ -73,7 +73,7 @@ def main():
       else:
         net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
     '''
-    for layer_id, num_hidden_units in enumerate([30, 20, 10]):
+    for layer_id, num_hidden_units in enumerate([30, 20, 10, 6]):
       with tf.variable_scope('hiddenlayer_%d' % layer_id, 
         values=(net,)) as hidden_layer_scope:
         net = tf.layers.dense(net, units=num_hidden_units, activation=tf.nn.relu,
