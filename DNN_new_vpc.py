@@ -13,7 +13,7 @@ import pwd
 import pdb
 import grp
 
-INPUT_PATH = "SimBoost/data/davis_cv_nmlzd.csv"
+INPUT_PATH = "SimBoost/data/davis_cv2.csv"
 LOG_DIR = "logs/"
 SUMM_DIR = "summary/"
 
@@ -113,12 +113,14 @@ def train_eval(loaded_data, fold_idx, summ_dir):
   feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
   net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)  
   #regularizer = tf.contrib.layers.l2_regularizer(scale=0.05)
+  if mode == "train":
+    net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+    net = tf.layers.dropout(net, rate=0.5, training=True)
+  else:
+    net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
+    net = tf.layers.dropout(net, rate=0.5, training=False)
   
-  for units in [3]:
-    if mode == "train":
-      net = tf.layers.dropout(net, rate=0.5, training=True)
-    else:
-      net = tf.layers.dropout(net, rate=0.5, training=False)      
+  for units in [30, 20, 10]:     
     net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
     if mode == "train":
       net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
@@ -143,17 +145,28 @@ def train_eval(loaded_data, fold_idx, summ_dir):
   #if mode == tf.estimator.ModeKeys.PREDICT:
   #  return tf.estimator.EstimatorSpec(mode, predictions={'value': predictions})
 
-  loss1 = tf.losses.mean_squared_error(labels, predictions)
-  tf.summary.scalar("loss1", loss1)
+  loss = tf.losses.mean_squared_error(labels, predictions)
+  tf.summary.scalar("loss", loss)  
+
   eval_metric_ops = {
-    "rmse": tf.sqrt(tf.losses.mean_squared_error(labels, predictions))
+    "rmse": tf.metrics.root_mean_squared_error(
+        tf.cast(labels, tf.float64), predictions)[0]
   }
   #train_itr = train_data.make_one_shot_iterator()
   train_itr = train_data.make_initializable_iterator()
   validn_itr = validn_data.make_initializable_iterator()
   
   optimizer = tf.train.AdamOptimizer()
-  train_op = optimizer.minimize(loss1, global_step=tf.train.get_global_step())
+  train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+
+  if mode == "train":
+    optimizer = tf.train.AdamOptimizer()
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+
+  #optimizer = tf.train.AdamOptimizer()
+  #train_op = optimizer.minimize(loss1, global_step=tf.train.get_global_step())
   
   merged_summ_op = tf.summary.merge_all()
 
@@ -241,7 +254,7 @@ def main():
   loaded_data = tf.contrib.data.Dataset.from_tensor_slices((features, labels))
   log_file = open('log.txt', 'w+')
   log_file.close()
-  for k in range(5):    
+  for k in range(1):    
     if tf.gfile.Exists(LOG_DIR):
       tf.gfile.DeleteRecursively(LOG_DIR)
     #if tf.gfile.Exists(SUMM_DIR):
