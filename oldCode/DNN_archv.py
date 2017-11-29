@@ -63,7 +63,8 @@ def dataset_input_fn(loaded_data, testing, perform_shuffle=False, num_epoch=1):
       dataset_orig = dataset
       for _ in range(num_epoch - 1):
         dataset1 = dataset_orig.shuffle(buffer_size=512)
-        dataset = dataset.concatenate(dataset1)     
+        dataset = dataset.concatenate(dataset1)          
+  
   else:
     dataset = dataset.repeat(num_epoch)
 
@@ -80,13 +81,19 @@ def main():
     feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
     net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)
     
-    regularizer = tf.contrib.layers.l2_regularizer(scale=0.05)
+    if mode == tf.estimator.ModeKeys.TRAIN:
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+      net = tf.layers.dropout(net, rate=0.5, training=True)
+    else:
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
+      net = tf.layers.dropout(net, rate=0.5, training=False) 
+    
     for units in [30, 20, 10]:
+      net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
       if mode == tf.estimator.ModeKeys.TRAIN:
-        net = tf.layers.dropout(net, rate=0.5, training=True)
+        net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
       else:
-        net = tf.layers.dropout(net, rate=0.5, training=False)      
-      net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
+        net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)    
     
     outp = tf.layers.dense(net, 1, activation=None)
     predictions = tf.cast(tf.reshape(outp, [-1, 1]), tf.float64)
@@ -100,10 +107,17 @@ def main():
       #  tf.cast(labels, tf.float64), predictions)
        "rmse": tf.sqrt(tf.losses.mean_squared_error(labels, predictions))
     }
-    return loss, eval_metric_ops     
+    optimizer = tf.train.AdamOptimizer()
+    train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    if mode == tf.estimator.ModeKeys.TRAIN:
+      optimizer = tf.train.AdamOptimizer()
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      with tf.control_dependencies(update_ops):
+        train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    return train_op, eval_metric_ops     
 
   def train_input_fn():
-    dts = dataset_input_fn(loaded_data, False, perform_shuffle=False, num_epoch = 36)
+    dts = dataset_input_fn(loaded_data, False, perform_shuffle=False, num_epoch = 21)
     return dts
 
   def test_input_fn():
@@ -116,6 +130,7 @@ def main():
     loss, _ = my_model(tr_bch_feat, tr_bch_labl, tf.estimator.ModeKeys.TRAIN)
     optimizer = tf.train.AdamOptimizer()
     train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+
     return train_op
 
   train_data = train_input_fn()
@@ -128,52 +143,11 @@ def main():
     handle, train_data.output_types, train_data.output_shapes)
   features, labels = iterator.get_next()
   
-
-  #def my_model(features, labels, mode): 
-  '''   
-  feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
-  net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)
-  
-  #regularizer = tf.contrib.layers.l2_regularizer(scale=0.05)
-  for units in [3]:
-    if mode == "train":
-      net = tf.layers.dropout(net, rate=0.5, training=True)
-    else:
-      net = tf.layers.dropout(net, rate=0.5, training=False)      
-    net = tf.layers.dense(net, units=units, activation=tf.nn.tanh
-                          #,kernel_regularizer=regularizer
-                          )
-  
-  outp = tf.layers.dense(net, 1, activation=None
-                         #, kernel_regularizer=regularizer
-                         )
-  predictions = tf.cast(tf.reshape(outp, [-1, 1]), tf.float64)
-  #if mode == tf.estimator.ModeKeys.PREDICT:
-  #  return tf.estimator.EstimatorSpec(mode, predictions={'value': predictions})
-  loss = tf.losses.mean_squared_error(labels, predictions)
-  eval_metric_ops = {
-    #"rmse": tf.metrics.root_mean_squared_error(
-    #  tf.cast(labels, tf.float64), predictions)
-    "rmse": tf.sqrt(tf.losses.mean_squared_error(labels, predictions))
-  }
-  #return loss, eval_metric_ops
-  '''
-  train_itr = train_data.make_one_shot_iterator()
+  train_itr = train_data.make_initializable_iterator()
   validn_itr = validn_data.make_initializable_iterator()
-
-  #graph_train = tf.Graph()
-  #with graph_train.as_default():
   
-  #train_itr = tf.contrib.data.Iterator.from_structure(train_data.output_types, 
-  #  train_data.output_shapes)
-  '''
-  optimizer = tf.train.AdamOptimizer()
-  train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
-  '''
-  train_op = get_train_op(features, labels)
+  train_op, _ = my_model(features, labels, tf.estimator.ModeKeys.TRAIN)
   #train_init_op = train_itr.make_initializer(train_data)
-
-  #TODO: if this doesn't work, try feedable iterator.
 
   _, eval_metric_ops = my_model(features, labels, tf.estimator.ModeKeys.EVAL)
 
@@ -190,14 +164,14 @@ def main():
       if tf.gfile.Exists(LOG_DIR):
         tf.gfile.DeleteRecursively(LOG_DIR)
       tf.gfile.MakeDirs(LOG_DIR)
-      log_file = open("log.txt", "a")
-      sys.stdout = log_file
-      sess.run(validn_itr.initializer)
-      for step in range(500):
-        try:
-          sess.run(train_op, feed_dict={handle: training_handle})
+      
+      sess.run(train_itr.initializer)
+      for step in range(12800):
         
-        if step % 500 == 499:
+        sess.run(train_op, feed_dict={handle: training_handle})
+        
+        if step % 1502 == 1501:
+          sess.run(validn_itr.initializer)
           summ = 0
           count = 0
           for i in range(150):
@@ -205,9 +179,11 @@ def main():
             RMSE = ev["rmse"]
             summ += RMSE
             count = i + 1
-          mean = summ/count
-          print("RMSE: {0:f}".format(mean))
-      log_file.close()
+          mean_rmse = summ/count
+          log_file = open("log.txt", "a")
+          sys.stdout = log_file
+          print("step {:d}, RMSE: {:f}".format(step+1, mean_rmse))
+          log_file.close()
       sys.stdout = sys.__stdout__
       fold_index[0] += 1
 
