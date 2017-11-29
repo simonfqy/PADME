@@ -13,7 +13,7 @@ import pwd
 import pdb
 import grp
 
-INPUT_PATH = "SimBoost/data/davis_cv2.csv"
+INPUT_PATH = "SimBoost/data/davis_cv_nmlzd.csv"
 LOG_DIR = "logs/"
 SUMM_DIR = "summary/"
 
@@ -102,7 +102,7 @@ def train_eval(loaded_data, fold_idx, summ_dir):
   handle = tf.placeholder(tf.string, shape=[])
   mode = tf.placeholder(tf.string, shape=[])
   train_data, train_size = dataset_input_fn(loaded_data, False, 
-    perform_shuffle=False, num_epoch = 18)
+    perform_shuffle=False, num_epoch = 36)
   # It could be either validation data set or test data set, depending on other params.
   validn_data, validn_size = dataset_input_fn(loaded_data, True)
   
@@ -113,44 +113,45 @@ def train_eval(loaded_data, fold_idx, summ_dir):
   feature_columns = [tf.feature_column.numeric_column(k) for k in FEATURES]
   net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)  
   #regularizer = tf.contrib.layers.l2_regularizer(scale=0.05)
-  if mode == "train":
-    net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
-    net = tf.layers.dropout(net, rate=0.5, training=True)
-  else:
-    net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
-    net = tf.layers.dropout(net, rate=0.5, training=False)
-  
-  for units in [30, 20, 10]:     
-    net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
-    if mode == "train":
-      net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
-    else:
-      net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
-
   '''
   for units in [3]:
     if mode == "train":
       net = tf.layers.dropout(net, rate=0.5, training=True)
     else:
       net = tf.layers.dropout(net, rate=0.5, training=False)      
-    net = tf.layers.dense(net, units=units, activation=tf.nn.tanh
-                          #,kernel_regularizer=regularizer
-                          )
+    net = tf.layers.dense(net, units=units, activation=tf.nn.tanh)
+    if mode == "train":
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+    else:
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
   '''
-  outp = tf.layers.dense(net, 1, activation=None
-                         #, kernel_regularizer=regularizer
-                         )
+  if mode == "train":
+    net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+    net = tf.layers.dropout(net, rate=0.5, training=True)
+  else:
+    net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
+    net = tf.layers.dropout(net, rate=0.5, training=False)  
+    
+  for units in [30, 20, 10]:    
+    net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
+    if mode == "train":
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)
+    else:
+      net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
+  
+  outp = tf.layers.dense(net, 1, activation=None)
   predictions = tf.cast(tf.reshape(outp, [-1, 1]), tf.float64)
 
   #if mode == tf.estimator.ModeKeys.PREDICT:
   #  return tf.estimator.EstimatorSpec(mode, predictions={'value': predictions})
 
   loss = tf.losses.mean_squared_error(labels, predictions)
-  tf.summary.scalar("loss", loss)  
-
+  tf.summary.scalar("loss", loss)
+  #init = tf.global_variables_initializer()
   eval_metric_ops = {
+    #"rmse": tf.sqrt(tf.losses.mean_squared_error(labels, predictions))
     "rmse": tf.metrics.root_mean_squared_error(
-        tf.cast(labels, tf.float64), predictions)[0]
+       tf.cast(labels, tf.float64), predictions)
   }
   #train_itr = train_data.make_one_shot_iterator()
   train_itr = train_data.make_initializable_iterator()
@@ -164,13 +165,11 @@ def train_eval(loaded_data, fold_idx, summ_dir):
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
       train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
-
-  #optimizer = tf.train.AdamOptimizer()
-  #train_op = optimizer.minimize(loss1, global_step=tf.train.get_global_step())
   
   merged_summ_op = tf.summary.merge_all()
 
   init = tf.global_variables_initializer()
+  init2 = tf.local_variables_initializer()
 
   train_steps = math.ceil(train_size/BATCH_SIZE)
   #if not VALIDATING:
@@ -205,7 +204,7 @@ def train_eval(loaded_data, fold_idx, summ_dir):
       #  summary_writer.add_summary(summary, step)
 
       if VALIDATING:
-        if step % 700 == 699:
+        if step % 1400 == 1399:
           sess.run(validn_itr.initializer)
           summ = 0
           count = 0
@@ -229,18 +228,19 @@ def train_eval(loaded_data, fold_idx, summ_dir):
               break
           log_file.close()
       else:
-        if step % 751 == 750:
+        if step % 1502 == 1501 or step == train_steps - 1:
           sess.run(validn_itr.initializer)
           summ = 0
           count = 0
           for i in range(validn_steps):
+            sess.run(init2)
             ev = sess.run(eval_metric_ops, feed_dict={handle: validation_handle, mode: "eval"})
-            summ += ev["rmse"]
+            summ += ev["rmse"][0]
             count = i + 1
           mean_rmse = summ/count
           log_file = open("log.txt", "a")
           sys.stdout = log_file
-          print("RMSE: {0:f}".format(mean_rmse))
+          print("step {:d}, RMSE: {:f}".format(step+1, mean_rmse))
           log_file.close()
 
     #summary_writer.close()
@@ -252,9 +252,9 @@ def main():
   labels = (loaded_data.iloc[:,[98]]).values
   features = (loaded_data.iloc[:, range(98)]).values
   loaded_data = tf.contrib.data.Dataset.from_tensor_slices((features, labels))
-  log_file = open('log.txt', 'w+')
-  log_file.close()
-  for k in range(1):    
+  #log_file = open('log.txt', 'a')
+  #log_file.close()
+  for k in range(5):    
     if tf.gfile.Exists(LOG_DIR):
       tf.gfile.DeleteRecursively(LOG_DIR)
     #if tf.gfile.Exists(SUMM_DIR):
