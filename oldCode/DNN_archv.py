@@ -63,8 +63,7 @@ def dataset_input_fn(loaded_data, testing, perform_shuffle=False, num_epoch=1):
       dataset_orig = dataset
       for _ in range(num_epoch - 1):
         dataset1 = dataset_orig.shuffle(buffer_size=512)
-        dataset = dataset.concatenate(dataset1)          
-  
+        dataset = dataset.concatenate(dataset1)     
   else:
     dataset = dataset.repeat(num_epoch)
 
@@ -82,7 +81,7 @@ def main():
     net = tf.feature_column.input_layer(features=features, feature_columns=feature_columns)
     
     regularizer = tf.contrib.layers.l2_regularizer(scale=0.05)
-    for units in [3]:
+    for units in [30, 20, 10]:
       if mode == tf.estimator.ModeKeys.TRAIN:
         net = tf.layers.dropout(net, rate=0.5, training=True)
       else:
@@ -121,7 +120,6 @@ def main():
 
   train_data = train_input_fn()
   validn_data = test_input_fn()
-
   
   handle = tf.placeholder(tf.string, shape=[])
   #mode = tf.placeholder(tf.string, shape=[])
