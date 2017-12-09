@@ -40,6 +40,25 @@ FEATURES = ["d.n.obs","d.ave.sim","d.hist.sim1","d.hist.sim2","d.hist.sim3",
 train_obs = [24045, 24045, 24045, 24044, 24045]
 test_obs = [6011, 6011, 6011, 6012, 6011]
 
+def leaky_relu_layer(x, weights, biases, name=None):
+  """Computes Leaky Relu(x * weight + biases).
+  Args:
+    x: a 2D tensor.  Dimensions typically: batch, in_units
+    weights: a 2D tensor.  Dimensions typically: in_units, out_units
+    biases: a 1D tensor.  Dimensions: out_units
+    name: A name for the operation (optional).  If not specified
+      "nn_relu_layer" is used.
+  Returns:
+    A 2-D Tensor computing relu(matmul(x, weights) + biases).
+    Dimensions typically: batch, out_units.
+  """
+  with tf.name_scope(name, "leaky_relu_layer", [x, weights, biases]) as name:
+    x = tf.convert_to_tensor(x, name="x")
+    weights = tf.convert_to_tensor(weights, name="weights")
+    biases = tf.convert_to_tensor(biases, name="biases")
+    xw_plus_b = tf.nn.bias_add(tf.matmul(x, weights), biases)
+    return tf.nn.leaky_relu(xw_plus_b, name=name)
+
 def main():
 
   fold_index = [0]
@@ -65,7 +84,7 @@ def main():
     else:
       net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)
       net = tf.layers.dropout(net, rate=0.05, training=False)
-    
+
     for layer_id, num_hidden_units in enumerate([32, 32, 32]):
       with tf.variable_scope('hiddenlayer_%d' % layer_id, 
         values=(net,)) as hidden_layer_scope:
@@ -79,12 +98,12 @@ def main():
           #net = tf.layers.dropout(net, rate=0.05, training=False)
         weights= tf.eye(num_rows=32, num_columns=32)
         biases = tf.zeros([32], tf.float32)
-        net = tf.nn.relu_layer(net, weights=weights, biases=biases, name=hidden_layer_scope.name)
+        net = leaky_relu_layer(net, weights=weights, biases=biases, name=hidden_layer_scope.name)
         _add_hidden_layer_summary(net, hidden_layer_scope.name)
-    if mode == tf.estimator.ModeKeys.TRAIN:
-      net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)      
-    else:
-      net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)    
+        if mode == tf.estimator.ModeKeys.TRAIN:
+          net = tf.layers.batch_normalization(net, center=False, scale=False, training=True)      
+        else:
+          net = tf.layers.batch_normalization(net, center=False, scale=False, training=False)    
         
     outp = tf.layers.dense(net, 1, activation=None)
     predictions = tf.cast(tf.reshape(outp, [-1, 1]), tf.float64)
