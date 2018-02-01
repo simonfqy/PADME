@@ -1,0 +1,2 @@
+davis,weave_regression,rms_score,train,0.856669453814,valid,0.851373203163,time_for_running,161.71051931381226
+davis,weave_regression,rms_score,train,0.846729759926,valid,0.851698968204,time_for_running,161.71051931381226

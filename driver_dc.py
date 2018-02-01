@@ -8,11 +8,13 @@ import tensorflow as tf
 import pandas as pd
 import argparse
 import os
+import time
 import sys
 import pwd
 import pdb
 import csv
 import deepchem
+import pickle
 #import dcCustom
 
 def model_regression(
@@ -24,7 +26,7 @@ def model_regression(
             model,
             test=False,
             #hyper_parameters=None,
-            seed=seed):
+            seed=123):
   train_scores = {}
   valid_scores = {}
   test_scores = {}
@@ -87,11 +89,11 @@ def load_davis(featurizer = 'Weave', split='random', reload=True, K = 5):
     featurizer = deepchem.feat.WeaveFeaturizer()
   loader = deepchem.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", featurizer=featurizer)
-  dataset = loader.featurize(dataset_file, shard_size=1024)
+  dataset = loader.featurize(dataset_file, shard_size=8192)
   
   transformers = [
         deepchem.trans.NormalizationTransformer(
-            transform_y=True, dataset=train_dataset)
+            transform_y=True, dataset=dataset)
   ]
   print("About to transform data")
   for transformer in transformers:
@@ -157,8 +159,8 @@ def run_analysis(dataset='davis',
   model = 'weave_regression'
   for i in range(fold_num):
     train_score, valid_score, _ = model_regression(
-          train_dataset = all_dataset[i][0],
-          valid_dataset= all_dataset[i][1],
+          all_dataset[i][0],
+          all_dataset[i][1],
           tasks,
           transformers,
           metric,
@@ -177,18 +179,18 @@ def run_analysis(dataset='davis',
     model_name = list(train_scores_list[0].keys())[0]
     for h in range(fold_num):
       train_score = train_scores_list[h]
-        valid_score = valid_scores_list[h]
-        for i in train_score[model_name]:
-          output_line = [
-                dataset,
-                model_name, i, 'train',
-                train_score[model_name][i], 'valid', valid_score[model_name][i]
-          ]
-          if test:
-            output_line.extend(['test', test_score[model_name][i]])
-          output_line.extend(
-              ['time_for_running', time_finish_fitting - time_start_fitting])
-          writer.writerow(output_line)
+      valid_score = valid_scores_list[h]
+      for i in train_score[model_name]:
+        output_line = [
+              dataset,
+              model_name, i, 'train',
+              train_score[model_name][i], 'valid', valid_score[model_name][i]
+        ]
+        if test:
+          output_line.extend(['test', test_score[model_name][i]])
+        output_line.extend(
+            ['time_for_running', time_finish_fitting - time_start_fitting])
+        writer.writerow(output_line)
   #if hyper_param_search:
   #  with open(os.path.join(out_path, dataset + model + '.pkl'), 'w') as f:
   #    pickle.dump(hyper_parameters, f)
