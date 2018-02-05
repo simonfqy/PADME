@@ -8,23 +8,30 @@ import tensorflow as tf
 import pandas as pd
 import argparse
 import os
+import time
 import sys
 import pwd
 import pdb
 import csv
 import deepchem
+import pickle
 import dcCustom
 
 def model_regression(
             train_dataset,
             valid_dataset,
+            test_dataset,
             tasks,
             transformers,
             metric,
             model,
+            prot_desc_dict,
+            prot_desc_length,
             test=False,
             #hyper_parameters=None,
-            seed=seed):
+            seed=123,
+            tensorboard = True,
+            model_dir="./model_dir"):
   train_scores = {}
   valid_scores = {}
   test_scores = {}
@@ -43,7 +50,7 @@ def model_regression(
     # n_pair_feat = hyper_parameters['n_pair_feat']
     batch_size = 64
     learning_rate = 1e-3
-    nb_epoch = None
+    nb_epoch = 20
 
     model = dcCustom.models.WeaveTensorGraph(
       len(tasks),
@@ -55,7 +62,11 @@ def model_regression(
       learning_rate=learning_rate,
       use_queue=False,
       random_seed=seed,
-      mode='regression')
+      mode='regression',
+      tensorboard = tensorboard,
+      model_dir = model_dir,
+      prot_desc_dict=prot_desc_dict,
+      prot_desc_length=prot_desc_length)
   
   print('-----------------------------')
   print('Start fitting: %s' % model_name)
@@ -72,7 +83,7 @@ def model_regression(
   return train_scores, valid_scores, test_scores
 
 
-def load_davis(featurizer = 'Weave', split='random', reload=True, K = 5):
+def load_davis(featurizer = 'Weave', test=False, split='random', reload=True, K = 5):
   tasks = ['interaction_value']
   data_dir = "davis_data/"
   if reload:
@@ -86,12 +97,13 @@ def load_davis(featurizer = 'Weave', split='random', reload=True, K = 5):
   if featurizer == 'Weave':
     featurizer = deepchem.feat.WeaveFeaturizer()
   loader = dcCustom.data.CSVLoader(
-      tasks = tasks, smiles_field="smiles", featurizer=featurizer)
-  dataset = loader.featurize(dataset_file, shard_size=1024)
+      tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
+      featurizer=featurizer)
+  dataset = loader.featurize(dataset_file, shard_size=8192)
   
   transformers = [
         deepchem.trans.NormalizationTransformer(
-            transform_y=True, dataset=train_dataset)
+            transform_y=True, dataset=dataset)
   ]
   print("About to transform data")
   for transformer in transformers:
@@ -105,29 +117,55 @@ def load_davis(featurizer = 'Weave', split='random', reload=True, K = 5):
       'task': deepchem.splits.TaskSplitter()
   }
   splitter = splitters[split]
-  fold_datasets = splitter.k_fold_split(dataset, K)
-  all_dataset = fold_datasets
+  if test:
+    train, valid, test = splitter.train_valid_test_split(dataset)
+    all_dataset = (train, valid, test)
+    if reload:
+      deepchem.utils.save.save_dataset_to_disk(save_dir, train, valid, test,
+                                               transformers)
+  else:
+    fold_datasets = splitter.k_fold_split(dataset, K)
+    all_dataset = fold_datasets
   
   return tasks, all_dataset, transformers
-  # TODO: here the implementation could be prone to errors. Not entirely sure.
+  # TODO: the implementation above could be prone to errors. Not entirely sure.
 
+def load_prot_desc_dict(prot_desc_path):
+  df = pd.read_csv(prot_desc_path, index_col=0)
+  #protList = list(df.index)
+  prot_desc_dict = {}
+  for row in df.itertuples():
+    descriptor = row[2:]
+    descriptor = np.array(descriptor)
+    descriptor = np.reshape(descriptor, (1, len(descriptor)))
+    prot_desc_dict[row[0]] = descriptor    
+  return prot_desc_dict
 
 def run_analysis(dataset='davis', 
                  featurizer = 'Weave',
+                 split= 'random',
                  out_path = '.',
                  fold_num = 5,
                  hyper_param_search = False, 
                  reload = True,
-                 test = False, seed=123):
+                 test = True, 
+                 seed=123,
+                 prot_desc_path="davis_data/prot_desc.csv"):
   metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score)]
 
   print('-------------------------------------')
   print('Running on dataset: %s' % dataset)
   print('-------------------------------------')
-
-  tasks, all_dataset, transformers = load_davis(featurizer=featurizer,
-                                                reload=reload, K = fold_num)
-
+  
+  if test:
+    tasks, all_dataset, transformers = load_davis(featurizer=featurizer, test=test,
+                                                  split=split, reload=reload)
+  else:
+    tasks, all_dataset, transformers = load_davis(featurizer=featurizer, test=test,
+                                                  reload=reload, K = fold_num)
+  prot_desc_dict = load_prot_desc_dict(prot_desc_path)
+  prot_desc_length = 8421
+  
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
   # a validation dataset.
@@ -135,6 +173,7 @@ def run_analysis(dataset='davis',
   time_start_fitting = time.time()
   train_scores_list = []
   valid_scores_list = []
+  test_scores_list = []
 
   '''
   if hyper_param_search:
@@ -155,42 +194,79 @@ def run_analysis(dataset='davis',
     hyper_parameters = hyper_param_opt
   '''
   model = 'weave_regression'
-  for i in range(fold_num):
-    train_score, valid_score, _ = model_regression(
-          train_dataset = all_dataset[i][0],
-          valid_dataset= all_dataset[i][1],
+  test_dataset = None
+  if test:
+    train_dataset, valid_dataset, test_dataset = all_dataset
+    train_score, valid_score, test_score = model_regression(
+          train_dataset,
+          valid_dataset,
+          test_dataset,
           tasks,
           transformers,
           metric,
           model,
+          prot_desc_dict,
+          prot_desc_length,
+          #hyper_parameters=hyper_parameters,
+          test = test,
+          seed=seed)
+    train_scores_list.append(train_score)
+    valid_scores_list.append(valid_score)
+    test_scores_list.append(test_score)
+  else:
+    for i in range(fold_num):
+      train_score, valid_score, _ = model_regression(
+          all_dataset[i][0],
+          all_dataset[i][1],
+          None,
+          tasks,
+          transformers,
+          metric,
+          model,
+          prot_desc_dict,
+          prot_desc_length,
           #hyper_parameters=hyper_parameters,
           test = test,
           seed=seed)
 
-    train_scores_list.append(train_score)
-    valid_scores_list.append(valid_score)
+      train_scores_list.append(train_score)
+      valid_scores_list.append(valid_score)
 
   time_finish_fitting = time.time()
 
   with open(os.path.join(out_path, 'results.csv'), 'a') as f:
     writer = csv.writer(f)
     model_name = list(train_scores_list[0].keys())[0]
-    for h in range(fold_num):
-      train_score = train_scores_list[h]
+    if test:
+      train_score = train_scores_list[0]
+      valid_score = valid_scores_list[0]
+      test_score = test_scores_list[0]
+      for i in train_score[model_name]:
+        output_line = [
+                  dataset,
+                  model_name, i, 'train',
+                  train_score[model_name][i], 'valid', valid_score[model_name][i]
+        ]
+        output_line.extend(['test', test_score[model_name][i]])
+        writer.writerow(output_line)
+    else:
+      for h in range(fold_num):
+        train_score = train_scores_list[h]
         valid_score = valid_scores_list[h]
         for i in train_score[model_name]:
           output_line = [
                 dataset,
                 model_name, i, 'train',
                 train_score[model_name][i], 'valid', valid_score[model_name][i]
-          ]
-          if test:
-            output_line.extend(['test', test_score[model_name][i]])
+          ]          
           output_line.extend(
               ['time_for_running', time_finish_fitting - time_start_fitting])
           writer.writerow(output_line)
   #if hyper_param_search:
   #  with open(os.path.join(out_path, dataset + model + '.pkl'), 'w') as f:
   #    pickle.dump(hyper_parameters, f)
+  
+if __name__ == '__main__':
+  run_analysis()
 
 
