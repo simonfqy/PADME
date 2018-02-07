@@ -38,6 +38,8 @@ class Model(BaseEstimator):
                model_instance=None,
                model_dir=None,
                verbose=True,
+               prot_desc_dict=None,
+               prot_desc_length=None,
                **kwargs):
     """Abstract class for all models.
     Parameters:
@@ -49,8 +51,9 @@ class Model(BaseEstimator):
     """
     self.model_dir_is_temp = False
     if model_dir is not None:
-      if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
+      if os.path.exists(model_dir):
+        shutil.rmtree(model_dir)
+      os.makedirs(model_dir)
     else:
       model_dir = tempfile.mkdtemp()
       self.model_dir_is_temp = True
@@ -59,6 +62,8 @@ class Model(BaseEstimator):
     self.model_class = model_instance.__class__
 
     self.verbose = verbose
+    self.prot_desc_dict = prot_desc_dict
+    self.prot_desc_length = prot_desc_length
 
   def __del__(self):
     if 'model_dir_is_temp' in dir(self) and self.model_dir_is_temp:
