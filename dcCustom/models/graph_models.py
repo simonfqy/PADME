@@ -82,14 +82,24 @@ class WeaveTensorGraph(TensorGraph):
         n_pair_input_feat=self.n_hidden,
         n_atom_output_feat=self.n_hidden,
         n_pair_output_feat=self.n_hidden,
-        update_pair=False,
+        update_pair=True,
         in_layers=[
             weave_layer1A, weave_layer1P, self.pair_split, self.atom_to_pair
         ])
+    weave_layer3A, weave_layer3P = WeaveLayerFactory(
+        n_atom_input_feat=self.n_hidden,
+        n_pair_input_feat=self.n_hidden,
+        n_atom_output_feat=self.n_hidden,
+        n_pair_output_feat=self.n_hidden,
+        update_pair=True,
+        in_layers=[
+            weave_layer2A, weave_layer2P, self.pair_split, self.atom_to_pair
+        ])
+    whole_mol = Concat(in_layers=[weave_layer3A, weave_layer3P])
     dense1 = Dense(
         out_channels=self.n_graph_feat,
         activation_fn=tf.nn.tanh,
-        in_layers=weave_layer2A)
+        in_layers=whole_mol)
     batch_norm1 = BatchNormalization(epsilon=1e-5, mode=1, in_layers=[dense1])
     weave_gather = WeaveGather(
         self.batch_size,
