@@ -50,7 +50,7 @@ def model_regression(
     # n_pair_feat = hyper_parameters['n_pair_feat']
     batch_size = 64
     learning_rate = 1e-3
-    nb_epoch = 20
+    nb_epoch = 35
 
     model = dcCustom.models.WeaveTensorGraph(
       len(tasks),
@@ -62,6 +62,7 @@ def model_regression(
       learning_rate=learning_rate,
       use_queue=False,
       random_seed=seed,
+      dropout_prob = 0.1,
       mode='regression',
       tensorboard = tensorboard,
       model_dir = model_dir,
