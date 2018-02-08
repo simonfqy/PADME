@@ -16,72 +16,8 @@ import csv
 import deepchem
 import pickle
 import dcCustom
-
-def model_regression(
-            train_dataset,
-            valid_dataset,
-            test_dataset,
-            tasks,
-            transformers,
-            metric,
-            model,
-            prot_desc_dict,
-            prot_desc_length,
-            test=False,
-            #hyper_parameters=None,
-            seed=123,
-            tensorboard = True,
-            model_dir="./model_dir"):
-  train_scores = {}
-  valid_scores = {}
-  test_scores = {}
-  assert model in [
-      'tf_regression', 'tf_regression_ft', 'rf_regression', 'graphconvreg',
-      'dtnn', 'dag_regression', 'xgb_regression', 'weave_regression',
-      'textcnn_regression', 'krr', 'ani', 'krr_ft', 'mpnn'
-  ]
-  model_name = model
-  
-  if model_name == 'weave_regression':
-    # batch_size = hyper_parameters['batch_size']
-    # nb_epoch = hyper_parameters['nb_epoch']
-    # learning_rate = hyper_parameters['learning_rate']
-    # n_graph_feat = hyper_parameters['n_graph_feat']
-    # n_pair_feat = hyper_parameters['n_pair_feat']
-    batch_size = 64
-    learning_rate = 1e-3
-    nb_epoch = 35
-
-    model = dcCustom.models.WeaveTensorGraph(
-      len(tasks),
-      #n_atom_feat=n_features,
-      #n_pair_feat=n_pair_feat,
-      n_hidden=50,
-      #n_graph_feat=n_graph_feat,
-      batch_size=batch_size,
-      learning_rate=learning_rate,
-      use_queue=False,
-      random_seed=seed,
-      dropout_prob = 0.1,
-      mode='regression',
-      tensorboard = tensorboard,
-      model_dir = model_dir,
-      prot_desc_dict=prot_desc_dict,
-      prot_desc_length=prot_desc_length)
-  
-  print('-----------------------------')
-  print('Start fitting: %s' % model_name)
-  if nb_epoch is None:
-    model.fit(train_dataset)
-  else:
-    model.fit(train_dataset, nb_epoch=nb_epoch)
-
-  train_scores[model_name] = model.evaluate(train_dataset, metric, transformers)
-  valid_scores[model_name] = model.evaluate(valid_dataset, metric, transformers)
-  if test:
-    test_scores[model_name] = model.evaluate(test_dataset, metric, transformers)
-
-  return train_scores, valid_scores, test_scores
+from dcCustom.molnet.preset_hyper_parameters import hps
+from dcCustom.molnet.run_benchmark_models import model_regression
 
 
 def load_davis(featurizer = 'Weave', test=False, split='random', reload=True, K = 5):
@@ -145,9 +81,13 @@ def load_prot_desc_dict(prot_desc_path):
 def run_analysis(dataset='davis', 
                  featurizer = 'Weave',
                  split= 'random',
+                 direction=False,
                  out_path = '.',
                  fold_num = 5,
-                 hyper_param_search = False, 
+                 hyper_parameters=None,
+                 hyper_param_search = True, 
+                 max_iter = 29,
+                 search_range = 3,
                  reload = True,
                  test = True, 
                  seed=123,
@@ -176,25 +116,30 @@ def run_analysis(dataset='davis',
   valid_scores_list = []
   test_scores_list = []
 
-  '''
+  model = 'weave_regression'
+  
+  n_features = 75
   if hyper_param_search:
     if hyper_parameters is None:
       hyper_parameters = hps[model]
-    search_mode = deepchem.hyper.GaussianProcessHyperparamOpt(model)
+    train_dataset, valid_dataset, test_dataset = all_dataset
+    search_mode = dcCustom.hyper.GaussianProcessHyperparamOpt(model)
     hyper_param_opt, _ = search_mode.hyperparam_search(
         hyper_parameters,
         train_dataset,
         valid_dataset,
         transformers,
         metric,
+        prot_desc_dict,
+        prot_desc_length,
         direction=direction,
         n_features=n_features,
         n_tasks=len(tasks),
         max_iter=max_iter,
         search_range=search_range)
     hyper_parameters = hyper_param_opt
-  '''
-  model = 'weave_regression'
+  
+  
   test_dataset = None
   if test:
     train_dataset, valid_dataset, test_dataset = all_dataset
@@ -204,11 +149,12 @@ def run_analysis(dataset='davis',
           test_dataset,
           tasks,
           transformers,
+          n_features,
           metric,
           model,
           prot_desc_dict,
           prot_desc_length,
-          #hyper_parameters=hyper_parameters,
+          hyper_parameters=hyper_parameters,
           test = test,
           seed=seed)
     train_scores_list.append(train_score)
@@ -263,9 +209,9 @@ def run_analysis(dataset='davis',
           output_line.extend(
               ['time_for_running', time_finish_fitting - time_start_fitting])
           writer.writerow(output_line)
-  #if hyper_param_search:
-  #  with open(os.path.join(out_path, dataset + model + '.pkl'), 'w') as f:
-  #    pickle.dump(hyper_parameters, f)
+  if hyper_param_search:
+    with open(os.path.join(out_path, dataset + model + '.pkl'), 'w') as f:
+      pickle.dump(hyper_parameters, f)
   
 if __name__ == '__main__':
   run_analysis()
