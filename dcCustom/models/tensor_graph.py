@@ -6,6 +6,7 @@ import time
 
 import numpy as np
 import tensorflow as tf
+import math
 import pdb
 from tensorflow.python.pywrap_tensorflow_internal import NewCheckpointReader
 
@@ -22,7 +23,7 @@ class TensorGraph(Model):
 
   def __init__(self,
                tensorboard=False,
-               tensorboard_log_frequency=60,
+               tensorboard_log_frequency=50,
                batch_size=100,
                random_seed=None,
                use_queue=True,
@@ -113,12 +114,20 @@ class TensorGraph(Model):
 
   def fit(self,
           dataset,
+          valid_dataset=None,
           nb_epoch=10,
           max_checkpoints_to_keep=5,
           checkpoint_interval=1000,
           deterministic=False,
           restore=False,
           submodel=None,
+          metric=None,
+          direction=None,
+          early_stopping=True,
+          evaluate_freq = 3, # Number of training epochs before evaluating
+          # for early stopping.
+          patience = 3,
+          transformers=None,
           **kwargs):
     """Train this model on a dataset.
 
@@ -142,11 +151,68 @@ class TensorGraph(Model):
     submodel: Submodel
       an alternate training objective to use.  This should have been created by
       calling create_submodel().
-    """
-    return self.fit_generator(
-        self.default_generator(
-            dataset, epochs=nb_epoch, deterministic=deterministic),
-        max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
+    """    
+    if not early_stopping:
+      return self.fit_generator(
+          self.default_generator(
+              dataset, epochs=nb_epoch, deterministic=deterministic),
+          max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
+    # Using early stopping.
+    assert evaluate_freq > 0
+    assert direction is not None
+    assert checkpoint_interval > 0
+    assert transformers is not None
+    
+    iterations=math.ceil(nb_epoch/evaluate_freq)
+    if metric is None:
+      if self.mode == 'regression':
+        metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
+        direction = False
+      elif self.mode == 'classification':
+        metric = [deepchem.metrics.Metric(deepchem.metrics.roc_auc_score, np.mean)]
+        direction = True
+    
+    self.temp_model_dir = self.model_dir + "/temp"
+    wait_time = 0
+    
+    best_score = math.inf * -1
+    
+    with self._get_tf("Graph").as_default():
+      v1 = tf.get_variable("v1", shape=[3], initializer = tf.zeros_initializer)
+      saver = tf.train.Saver(
+              max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
+      optimal_epoch = 0
+      epoch_count = 0
+      for i in range(iterations):
+        num_epoch = evaluate_freq
+        if i == (iterations - 1):
+          num_epoch = nb_epoch % evaluate_freq
+        # Temporarily overriding the path of saving.
+        self.save_file = "%s/%s" % (self.temp_model_dir, "model")
+        self.fit_generator(
+            self.default_generator(
+                dataset, epochs=num_epoch, deterministic=deterministic),
+            max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
+        valid_score = self.evaluate(valid_dataset, metric, transformers)
+        val_sc = valid_score[metric[0].name] 
+        # Resuming the path of saving.
+        self.save_file = "%s/%s" % (self.model_dir, "model")
+        wait_time += 1
+        epoch_count += num_epoch
+        if not direction:
+          val_sc = -1 * val_sc
+        
+        if val_sc > best_score:
+          best_score = val_sc
+          wait_time = 0
+          optimal_epoch = epoch_count
+          saver.save(self.session, self.save_file, global_step=self.global_step)
+        
+        if (wait_time > patience):
+          break
+    with self._get_tf("Graph").as_default():    
+      self.restore() #This only restores from the self.model_dir
+    return optimal_epoch
 
   def fit_generator(self,
                     feed_dict_generator,
@@ -742,12 +808,14 @@ class TensorGraph(Model):
     elif obj == 'train_op':
       opt = self._get_tf('Optimizer')
       global_step = self._get_tf('GlobalStep')
-      try:
-        self.tensor_objects['train_op'] = opt.minimize(
-            self.loss.out_tensor, global_step=global_step)
-      except ValueError:
-        # The loss doesn't depend on any variables.
-        self.tensor_objects['train_op'] = 0
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      with tf.control_dependencies(update_ops):
+        try:
+          self.tensor_objects['train_op'] = opt.minimize(
+              self.loss.out_tensor, global_step=global_step)
+        except ValueError:
+          # The loss doesn't depend on any variables.
+          self.tensor_objects['train_op'] = 0
     elif obj == 'summary_op':
       self.tensor_objects['summary_op'] = tf.summary.merge_all(
           key=tf.GraphKeys.SUMMARIES)
