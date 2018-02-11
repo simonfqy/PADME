@@ -119,18 +119,22 @@ def run_analysis(dataset='davis',
                  out_path = '.',
                  fold_num = 5,
                  hyper_parameters=None,
-                 hyper_param_search = False, 
-                 max_iter = 29,
+                 hyper_param_search = True, 
+                 max_iter = 42,
                  search_range = 3,
                  reload = True,
                  cross_validation = False,
-                 test = False, 
+                 test = False,
+                 early_stopping = True,
+                 evaluate_freq = 3, # Number of training epochs before evaluating
+                 # for early stopping.
+                 patience = 3,
                  seed=123,
                  prot_desc_path="davis_data/prot_desc.csv"):
   if mode == 'regression':
-    metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score)]
+    metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
   elif mode == 'classification':
-    metric = [deepchem.metrics.Metric(deepchem.metrics.roc_auc_score)]
+    metric = [deepchem.metrics.Metric(deepchem.metrics.roc_auc_score, np.mean)]
 
   print('-------------------------------------')
   print('Running on dataset: %s' % dataset)
@@ -158,7 +162,7 @@ def run_analysis(dataset='davis',
   model = 'weave_regression'
   
   n_features = 75
-  if hyper_param_search:
+  if hyper_param_search: # We don't use cross validation in this case.
     if hyper_parameters is None:
       hyper_parameters = hps[model]
     train_dataset, valid_dataset, test_dataset = all_dataset
@@ -178,12 +182,12 @@ def run_analysis(dataset='davis',
         search_range=search_range)
     hyper_parameters = hyper_param_opt
   
-  
+  opt_epoch = -1
   test_dataset = None
   if mode == 'regression':
     if not cross_validation:
       train_dataset, valid_dataset, test_dataset = all_dataset
-      train_score, valid_score, test_score = model_regression(
+      train_score, valid_score, test_score, opt_epoch = model_regression(
             train_dataset,
             valid_dataset,
             test_dataset,
@@ -195,14 +199,20 @@ def run_analysis(dataset='davis',
             prot_desc_dict,
             prot_desc_length,
             hyper_parameters=hyper_parameters,
-            test = test,
-            seed=seed)
+            test = test,         
+            early_stopping = early_stopping,
+            evaluate_freq = 3, # Number of training epochs before evaluating
+            # for early stopping.
+            patience = 3,
+            direction=direction,
+            seed=seed,
+            model_dir="./model_dir2")
       train_scores_list.append(train_score)
       valid_scores_list.append(valid_score)
       test_scores_list.append(test_score)
     else:
       for i in range(fold_num):
-        train_score, valid_score, _ = model_regression(
+        train_score, valid_score, _, _ = model_regression(
             all_dataset[i][0],
             all_dataset[i][1],
             None,
@@ -212,9 +222,12 @@ def run_analysis(dataset='davis',
             model,
             prot_desc_dict,
             prot_desc_length,
-            #hyper_parameters=hyper_parameters,
+            hyper_parameters=hyper_parameters,
             test = test,
-            seed=seed)
+            early_stopping = False,
+            direction=direction,
+            seed=seed,
+            model_dir="./model_dir2")
 
         train_scores_list.append(train_score)
         valid_scores_list.append(valid_score)
@@ -236,7 +249,13 @@ def run_analysis(dataset='davis',
             prot_desc_length,
             hyper_parameters=hyper_parameters,
             test = test,
-            seed=seed)
+            early_stopping = early_stopping,
+            evaluate_freq = 3, # Number of training epochs before evaluating
+            # for early stopping.
+            patience = 3,
+            direction=direction,
+            seed=seed,
+            model_dir="./model_dir2")
       train_scores_list.append(train_score)
       valid_scores_list.append(valid_score)
       test_scores_list.append(test_score)
@@ -252,9 +271,12 @@ def run_analysis(dataset='davis',
             model,
             prot_desc_dict,
             prot_desc_length,
-            #hyper_parameters=hyper_parameters,
+            hyper_parameters=hyper_parameters,
             test = test,
-            seed=seed)
+            early_stopping = False,
+            direction=direction,
+            seed=seed,
+            model_dir="./model_dir2")
 
         train_scores_list.append(train_score)
         valid_scores_list.append(valid_score)
@@ -295,6 +317,8 @@ def run_analysis(dataset='davis',
         ]
         if test:
           output_line.extend(['test', test_score[model_name][i]])
+        if early_stopping:
+          output_line.extend(['optimal epoch', opt_epoch])
         writer.writerow(output_line)
   if hyper_param_search:
     with open(os.path.join(out_path, dataset + model + '.pkl'), 'w') as f:
