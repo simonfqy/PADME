@@ -28,9 +28,14 @@ def model_regression(
             prot_desc_length,
             test=False,
             hyper_parameters=None,
+            early_stopping = True,
+            evaluate_freq = 3, # Number of training epochs before evaluating
+            # for early stopping.
+            patience = 3,
+            model_dir="./model_dir",
+            direction = None,
             seed=123,
-            tensorboard = True,
-            model_dir="./model_dir"):
+            tensorboard = False):
   train_scores = {}
   valid_scores = {}
   test_scores = {}
@@ -78,16 +83,22 @@ def model_regression(
   print('-----------------------------')
   print('Start fitting: %s' % model_name)
   if nb_epoch is None:
-    model.fit(train_dataset, restore=False)
+    opt_epoch = model.fit(train_dataset, valid_dataset, restore=False, 
+      metric=metric, direction=direction, early_stopping=early_stopping, 
+      evaluate_freq=evaluate_freq, patience = patience, transformers=transformers)
   else:
-    model.fit(train_dataset, nb_epoch=nb_epoch, restore=False)
+    opt_epoch = model.fit(train_dataset, valid_dataset, nb_epoch=nb_epoch, restore=False, 
+      metric=metric, direction=direction, early_stopping=early_stopping, 
+      evaluate_freq=evaluate_freq, patience = patience, transformers=transformers)
+  if not early_stopping:
+    opt_epoch = None
 
   train_scores[model_name] = model.evaluate(train_dataset, metric, transformers)
   valid_scores[model_name] = model.evaluate(valid_dataset, metric, transformers)
   if test:
     test_scores[model_name] = model.evaluate(test_dataset, metric, transformers)
 
-  return train_scores, valid_scores, test_scores
+  return train_scores, valid_scores, test_scores, opt_epoch
   
 def model_classification(
             train_dataset,
@@ -102,8 +113,13 @@ def model_classification(
             prot_desc_length,
             test=False,
             hyper_parameters=None,
+            early_stopping = True,
+            evaluate_freq = 3, # Number of training epochs before evaluating
+            # for early stopping.
+            patience = 3,
+            direction = None,
             seed=123,
-            tensorboard = True,
+            tensorboard = False,
             model_dir="./cls_model_dir"):
   train_scores = {}
   valid_scores = {}
@@ -117,27 +133,29 @@ def model_classification(
   model_name = model
   
   if model_name == 'weave':
-    # batch_size = hyper_parameters['batch_size']
-    # nb_epoch = hyper_parameters['nb_epoch']
-    # learning_rate = hyper_parameters['learning_rate']
-    # n_graph_feat = hyper_parameters['n_graph_feat']
-    # n_hidden = hyper_parameters['n_hidden']
-    # dropout_prob = hyper_parameters['dropout_prob']
+    batch_size = hyper_parameters['batch_size']
+    nb_epoch = hyper_parameters['nb_epoch']
+    learning_rate = hyper_parameters['learning_rate']
+    n_graph_feat = hyper_parameters['n_graph_feat']
+    n_hidden = hyper_parameters['n_hidden']
+    dropout_prob = hyper_parameters['dropout_prob']
     # n_pair_feat = hyper_parameters['n_pair_feat']
     # batch_size = 183
-    learning_rate = 4.8e-5
-    nb_epoch = 20
+    # learning_rate = 4.8e-5
+    # nb_epoch = 20
     # n_graph_feat = 371
-    # n_hidden = 154,
-    dropout_prob = 0.2
+    # n_hidden = 154
+    # dropout_prob = 0.1
 
     model = dcCustom.models.WeaveTensorGraph(
       len(tasks),
       n_atom_feat=n_features,
       #n_pair_feat=n_pair_feat,
-      n_hidden=50,
-      n_graph_feat=128,
-      batch_size=64,
+      #n_hidden=50,
+      #n_graph_feat=128,
+      n_hidden=n_hidden,
+      n_graph_feat=n_graph_feat,
+      batch_size=batch_size,
       learning_rate=learning_rate,
       use_queue=False,
       random_seed=seed,
@@ -151,13 +169,19 @@ def model_classification(
   print('-----------------------------')
   print('Start fitting: %s' % model_name)
   if nb_epoch is None:
-    model.fit(train_dataset, restore=False)
+    opt_epoch = model.fit(train_dataset, valid_dataset, restore=False, 
+      metric=metric, direction=direction, early_stopping=early_stopping, 
+      evaluate_freq=evaluate_freq, patience = patience, transformers=transformers)
   else:
-    model.fit(train_dataset, nb_epoch=nb_epoch, restore=False)
+    opt_epoch = model.fit(train_dataset, valid_dataset, nb_epoch=nb_epoch, restore=False, 
+      metric=metric, direction=direction, early_stopping=early_stopping, 
+      evaluate_freq=evaluate_freq, patience = patience, transformers=transformers)
+  if not early_stopping:
+    opt_epoch = None
 
   train_scores[model_name] = model.evaluate(train_dataset, metric, transformers)
   valid_scores[model_name] = model.evaluate(valid_dataset, metric, transformers)
   if test:
     test_scores[model_name] = model.evaluate(test_dataset, metric, transformers)
 
-  return train_scores, valid_scores, test_scores
+  return train_scores, valid_scores, test_scores, opt_epoch
