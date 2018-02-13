@@ -119,7 +119,7 @@ def run_analysis(dataset='davis',
                  out_path = '.',
                  fold_num = 5,
                  hyper_parameters=None,
-                 hyper_param_search = True, 
+                 hyper_param_search = False, 
                  max_iter = 42,
                  search_range = 3,
                  reload = True,
@@ -142,7 +142,8 @@ def run_analysis(dataset='davis',
   
   if cross_validation:    
     tasks, all_dataset, transformers = load_davis(featurizer=featurizer, cross_validation=cross_validation,
-                                                  test=test, reload=reload, K = fold_num, mode=mode)
+                                                  test=test, split=split,reload=reload, 
+                                                  K = fold_num, mode=mode)
   else:
     tasks, all_dataset, transformers = load_davis(featurizer=featurizer, cross_validation=cross_validation,
                                                   test=test, split=split, reload=reload, mode=mode)
@@ -158,8 +159,11 @@ def run_analysis(dataset='davis',
   train_scores_list = []
   valid_scores_list = []
   test_scores_list = []
-
-  model = 'weave_regression'
+  if mode == 'regression':
+    model = 'weave_regression'
+  elif mode == 'classification':
+    model = 'weave'
+  model_dir='./model_dir'
   
   n_features = 75
   if hyper_param_search: # We don't use cross validation in this case.
@@ -179,7 +183,9 @@ def run_analysis(dataset='davis',
         n_features=n_features,
         n_tasks=len(tasks),
         max_iter=max_iter,
-        search_range=search_range)
+        search_range=search_range,
+        model_dir=model_dir,
+        log_file='GPhypersearch.log')
     hyper_parameters = hyper_param_opt
   
   opt_epoch = -1
@@ -206,7 +212,7 @@ def run_analysis(dataset='davis',
             patience = 3,
             direction=direction,
             seed=seed,
-            model_dir="./model_dir2")
+            model_dir=model_dir)
       train_scores_list.append(train_score)
       valid_scores_list.append(valid_score)
       test_scores_list.append(test_score)
@@ -227,16 +233,16 @@ def run_analysis(dataset='davis',
             early_stopping = False,
             direction=direction,
             seed=seed,
-            model_dir="./model_dir2")
+            model_dir=model_dir)
 
         train_scores_list.append(train_score)
         valid_scores_list.append(valid_score)
  
   elif mode == 'classification':
-    model = 'weave'
+    direction=True
     if not cross_validation:
       train_dataset, valid_dataset, test_dataset = all_dataset
-      train_score, valid_score, test_score = model_classification(
+      train_score, valid_score, test_score, opt_epoch = model_classification(
             train_dataset,
             valid_dataset,
             test_dataset,
@@ -255,13 +261,13 @@ def run_analysis(dataset='davis',
             patience = 3,
             direction=direction,
             seed=seed,
-            model_dir="./model_dir2")
+            model_dir=model_dir)
       train_scores_list.append(train_score)
       valid_scores_list.append(valid_score)
       test_scores_list.append(test_score)
     else:
       for i in range(fold_num):
-        train_score, valid_score, _ = model_classification(
+        train_score, valid_score, _, _ = model_classification(
             all_dataset[i][0],
             all_dataset[i][1],
             None,
@@ -276,7 +282,7 @@ def run_analysis(dataset='davis',
             early_stopping = False,
             direction=direction,
             seed=seed,
-            model_dir="./model_dir2")
+            model_dir=model_dir)
 
         train_scores_list.append(train_score)
         valid_scores_list.append(valid_score)
