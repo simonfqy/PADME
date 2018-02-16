@@ -21,7 +21,7 @@ from dcCustom.molnet.run_benchmark_models import model_regression, model_classif
 
 
 def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
-  reload=True, K = 5, mode = 'regression', train_valid_only = True): 
+  reload=True, K = 5, mode = 'regression', train_valid_only = True, predict_cold = False): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -30,7 +30,8 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
 
   train_valid_only = not test
 
-  if mode == 'regression':
+  if mode == 'regression' or mode == 'reg-threshold':
+    mode = 'regression'
     tasks = ['interaction_value']
     file_name = "restructured.csv"
   elif mode == 'classification':
@@ -40,17 +41,23 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
   data_dir = "davis_data/"
   if reload:
     delim = "/"
+    if predict_cold:
+      delim = "_cold" + delim
     if cross_validation:
-      delim = "cv" + delim
-    save_dir = os.path.join(data_dir, "tox21/" + featurizer + delim + mode + "/" + split)
-    loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
-        save_dir)
+      delim = "_CV" + delim
+      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
+      loaded, all_dataset, transformers = dcCustom.utils.save.load_cv_dataset_from_disk(
+          save_dir, K)
+    else:
+      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
+      loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
+          save_dir)
     if loaded:
       return tasks, all_dataset, transformers
   
   dataset_file = os.path.join(data_dir, file_name)
   if featurizer == 'Weave':
-    featurizer = deepchem.feat.WeaveFeaturizer()
+    featurizer = dcCustom.feat.WeaveFeaturizer()
   loader = dcCustom.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
       featurizer=featurizer)
@@ -72,7 +79,7 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
     
   splitters = {
       'index': deepchem.splits.IndexSplitter(),
-      'random': deepchem.splits.RandomSplitter(),
+      'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold),
       'scaffold': deepchem.splits.ScaffoldSplitter(),
       'butina': deepchem.splits.ButinaSplitter(),
       'task': deepchem.splits.TaskSplitter()
@@ -87,6 +94,8 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
   elif cross_validation:
     fold_datasets = splitter.k_fold_split(dataset, K)
     all_dataset = fold_datasets
+    if reload:
+      dcCustom.utils.save.save_cv_dataset_to_disk(save_dir, all_dataset, K, transformers)
 
   else:
     # not cross validating, and not testing.
@@ -113,28 +122,38 @@ def load_prot_desc_dict(prot_desc_path):
 
 def run_analysis(dataset='davis', 
                  featurizer = 'Weave',
-                 mode = 'regression',
+                 mode = 'reg-threshold',
                  split= 'random',
-                 direction=False,
+                 threshold = 7.0,
+                 direction=True,
                  out_path = '.',
                  fold_num = 5,
                  hyper_parameters=None,
-                 hyper_param_search = False, 
+                 hyper_param_search = True, 
                  max_iter = 42,
                  search_range = 3,
                  reload = True,
                  cross_validation = False,
                  test = False,
+                 predict_cold = True, # Determines whether cold-start drugs and targets are tested or validated.
                  early_stopping = True,
                  evaluate_freq = 3, # Number of training epochs before evaluating
                  # for early stopping.
                  patience = 3,
                  seed=123,
+                 log_file = 'GPhypersearch_cold.log',
+                 model_dir = './model_dir_cold',
                  prot_desc_path="davis_data/prot_desc.csv"):
   if mode == 'regression':
     metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
   elif mode == 'classification':
     metric = [deepchem.metrics.Metric(deepchem.metrics.roc_auc_score, np.mean)]
+  elif mode == "reg-threshold":
+    metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
+      threshold=threshold, mode="regression")]
+
+  # We assume that values above the threshold are "on" or 1, those below are "off"
+  # or 0.
 
   print('-------------------------------------')
   print('Running on dataset: %s' % dataset)
@@ -142,11 +161,12 @@ def run_analysis(dataset='davis',
   
   if cross_validation:    
     tasks, all_dataset, transformers = load_davis(featurizer=featurizer, cross_validation=cross_validation,
-                                                  test=test, split=split,reload=reload, 
-                                                  K = fold_num, mode=mode)
+                                                  test=test, split=split, reload=reload, 
+                                                  K = fold_num, mode=mode, predict_cold=predict_cold)
   else:
     tasks, all_dataset, transformers = load_davis(featurizer=featurizer, cross_validation=cross_validation,
-                                                  test=test, split=split, reload=reload, mode=mode)
+                                                  test=test, split=split, reload=reload, mode=mode,
+                                                  predict_cold=predict_cold)
     
   prot_desc_dict = load_prot_desc_dict(prot_desc_path)
   prot_desc_length = 8421
@@ -159,12 +179,11 @@ def run_analysis(dataset='davis',
   train_scores_list = []
   valid_scores_list = []
   test_scores_list = []
-  if mode == 'regression':
+  if mode == 'regression' or mode == 'reg-threshold':
     model = 'weave_regression'
   elif mode == 'classification':
     model = 'weave'
-  model_dir='./model_dir'
-  
+    
   n_features = 75
   if hyper_param_search: # We don't use cross validation in this case.
     if hyper_parameters is None:
@@ -185,12 +204,12 @@ def run_analysis(dataset='davis',
         max_iter=max_iter,
         search_range=search_range,
         model_dir=model_dir,
-        log_file='GPhypersearch.log')
+        log_file=log_file)
     hyper_parameters = hyper_param_opt
   
   opt_epoch = -1
   test_dataset = None
-  if mode == 'regression':
+  if mode == 'regression' or mode == 'reg-threshold':
     if not cross_validation:
       train_dataset, valid_dataset, test_dataset = all_dataset
       train_score, valid_score, test_score, opt_epoch = model_regression(
@@ -289,9 +308,11 @@ def run_analysis(dataset='davis',
   time_finish_fitting = time.time()
   
   if mode == 'regression':
-    results_file = 'results.csv'
+    results_file = 'results_cold.csv'
   elif mode == 'classification':
     results_file = 'results_cls.csv'
+  elif mode == 'reg-threshold':
+    results_file = 'results_thrhd.csv'
 
   with open(os.path.join(out_path, results_file), 'a') as f:
     writer = csv.writer(f)
