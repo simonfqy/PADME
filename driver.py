@@ -122,10 +122,10 @@ def load_prot_desc_dict(prot_desc_path):
 
 def run_analysis(dataset='davis', 
                  featurizer = 'Weave',
-                 mode = 'reg-threshold',
+                 mode = 'regression',
                  split= 'random',
                  threshold = 7.0,
-                 direction=True,
+                 direction = False,
                  out_path = '.',
                  fold_num = 5,
                  hyper_parameters=None,
@@ -137,12 +137,12 @@ def run_analysis(dataset='davis',
                  test = False,
                  predict_cold = True, # Determines whether cold-start drugs and targets are tested or validated.
                  early_stopping = True,
-                 evaluate_freq = 3, # Number of training epochs before evaluating
+                 evaluate_freq = 2, # Number of training epochs before evaluating
                  # for early stopping.
                  patience = 3,
                  seed=123,
-                 log_file = 'GPhypersearch_cold.log',
-                 model_dir = './model_dir_cold',
+                 log_file = 'GPhypersearch.log',
+                 model_dir = './model_dir',
                  prot_desc_path="davis_data/prot_desc.csv"):
   if mode == 'regression':
     metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
@@ -203,6 +203,9 @@ def run_analysis(dataset='davis',
         n_tasks=len(tasks),
         max_iter=max_iter,
         search_range=search_range,
+        early_stopping = early_stopping,
+        evaluate_freq=evaluate_freq,
+        patience=patience,
         model_dir=model_dir,
         log_file=log_file)
     hyper_parameters = hyper_param_opt
@@ -308,7 +311,10 @@ def run_analysis(dataset='davis',
   time_finish_fitting = time.time()
   
   if mode == 'regression':
-    results_file = 'results_cold.csv'
+    if predict_cold:
+      results_file = 'results_cold.csv'
+    else:
+      results_file = 'results.csv'
   elif mode == 'classification':
     results_file = 'results_cls.csv'
   elif mode == 'reg-threshold':
