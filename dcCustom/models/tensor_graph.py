@@ -23,7 +23,7 @@ class TensorGraph(Model):
 
   def __init__(self,
                tensorboard=False,
-               tensorboard_log_frequency=50,
+               tensorboard_log_frequency=100,
                batch_size=100,
                random_seed=None,
                use_queue=True,
@@ -186,7 +186,7 @@ class TensorGraph(Model):
       for i in range(iterations):
         num_epoch = evaluate_freq
         if i == (iterations - 1):
-          num_epoch = nb_epoch % evaluate_freq
+          num_epoch = nb_epoch - evaluate_freq * i
         # Temporarily overriding the path of saving.
         self.save_file = "%s/%s" % (self.temp_model_dir, "model")
         self.fit_generator(
@@ -209,9 +209,9 @@ class TensorGraph(Model):
           saver.save(self.session, self.save_file, global_step=self.global_step)
         
         if (wait_time > patience):
-          break
-    with self._get_tf("Graph").as_default():    
+          break       
       self.restore() #This only restores from the self.model_dir
+      self.evaluate(valid_dataset, metric, transformers)
     return optimal_epoch
 
   def fit_generator(self,
