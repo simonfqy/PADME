@@ -130,18 +130,18 @@ def run_analysis(dataset='davis',
                  fold_num = 5,
                  hyper_parameters=None,
                  hyper_param_search = True, 
-                 max_iter = 42,
+                 max_iter = 2,
                  search_range = 3,
                  reload = True,
                  cross_validation = False,
                  test = False,
-                 predict_cold = True, # Determines whether cold-start drugs and targets are tested or validated.
+                 predict_cold = False, # Determines whether cold-start drugs and targets are tested or validated.
                  early_stopping = True,
                  evaluate_freq = 2, # Number of training epochs before evaluating
                  # for early stopping.
                  patience = 3,
                  seed=123,
-                 log_file = 'GPhypersearch.log',
+                 log_file = 'GPhypersearch_temp.log',
                  model_dir = './model_dir',
                  prot_desc_path="davis_data/prot_desc.csv"):
   if mode == 'regression':
