@@ -1,0 +1,33 @@
+davis,weave_regression,rms_score,train,0.880917960719,valid,0.918171697133,time_for_running,2620.077806711197
+davis,weave_regression,rms_score,train,0.887169592705,valid,0.874716769211,time_for_running,2620.077806711197
+davis,weave_regression,rms_score,train,0.888760550783,valid,0.870549414553,time_for_running,2620.077806711197
+davis,weave_regression,rms_score,train,0.884129170792,valid,0.888569077534,time_for_running,2620.077806711197
+davis,weave_regression,rms_score,train,0.890520361595,valid,0.877400110032,time_for_running,2620.077806711197
+davis,weave_regression,rms_score,train,1.09324758072,valid,1.11342102572,test,0.951546348956
+davis,weave_regression,rms_score,train,1.10432025181,valid,1.1304888607,test,0.959258786941
+davis,weave_regression,rms_score,train,1.10445974004,valid,1.130109142,test,0.962334081036
+davis,weave_regression,rms_score,train,1.09856739337,valid,1.12757031467,test,0.951304434297
+davis,weave_regression,rms_score,train,1.09803079087,valid,1.02515074236,test,1.060569088
+davis,weave_regression,rms_score,train,1.11092313357,valid,1.26411582901,test,0.953997015929
+davis,weave_regression,rms_score,train,1.09401600055,valid,1.13544124223,test,1.06184304598
+davis,weave_regression,rms_score,train,1.05304926156,valid,1.18603200141,test,1.11338766179
+davis,weave_regression,rms_score,train,1.09993699304,valid,1.05179940763,test,1.15082268954
+davis,weave_regression,rms_score,train,1.02846729084,valid,1.02064912687,test,1.03728855741
+davis,weave_regression,rms_score,train,0.832962898929,valid,0.818441672937,test,0.849244367682
+davis,weave_regression,rms_score,train,0.832715766039,valid,0.819342612787,test,0.849784940037
+davis,weave_regression,rms_score,train,0.834762981593,valid,0.819776388274,test,0.852127876634
+davis,weave_regression,rms_score,train,0.838570811491,valid,0.822344945838,test,0.852915365058
+davis,weave_regression,rms_score,train,0.837021054806,valid,0.82514463572,test,0.85465193677
+davis,weave_regression,rms_score,train,0.835526161509,valid,0.817697752398,test,0.849144636273
+davis,weave_regression,rms_score,train,0.834178481497,valid,0.817362983566,test,0.848589040627
+davis,weave_regression,rms_score,train,0.836251694484,valid,0.819443133885,test,0.849990839793
+davis,weave_regression,rms_score,train,0.847752430708,valid,0.830946680095,test,0.863919708908
+davis,weave_regression,rms_score,train,0.743994181753,valid,0.748990742071,test,0.765315895177
+davis,weave_regression,rms_score,train,0.726866330655,valid,0.728916150057,test,0.748470567924
+davis,weave_regression,rms_score,train,0.741479052096,valid,0.743899499531,test,0.758518259538
+davis,weave_regression,rms_score,train,0.715800161722,valid,0.720433711791,test,0.743301572594
+davis,weave_regression,rms_score,train,0.722849040639,valid,0.730746998674,test,0.715615408564
+davis,weave_regression,rms_score,train,0.834798367479,valid,0.861676531578
+davis,weave_regression,mean-rms_score,train,0.714979611162,valid,0.763022407842,optimal epoch,3
+davis,weave_regression,mean-rms_score,train,0.270250336381,valid,0.53329120708,optimal epoch,98
+davis,weave_regression,mean-rms_score,train,0.823487163777,valid,0.845253058147,optimal epoch,1
