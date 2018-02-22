@@ -142,7 +142,7 @@ def run_analysis(dataset='davis',
                  patience = 3,
                  seed=123,
                  log_file = 'GPhypersearch_temp.log',
-                 model_dir = './model_dir',
+                 model_dir = './model_dir2',
                  prot_desc_path="davis_data/prot_desc.csv"):
   if mode == 'regression':
     metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
@@ -229,9 +229,9 @@ def run_analysis(dataset='davis',
             hyper_parameters=hyper_parameters,
             test = test,         
             early_stopping = early_stopping,
-            evaluate_freq = 3, # Number of training epochs before evaluating
+            evaluate_freq = evaluate_freq, # Number of training epochs before evaluating
             # for early stopping.
-            patience = 3,
+            patience = patience,
             direction=direction,
             seed=seed,
             model_dir=model_dir)
@@ -278,9 +278,9 @@ def run_analysis(dataset='davis',
             hyper_parameters=hyper_parameters,
             test = test,
             early_stopping = early_stopping,
-            evaluate_freq = 3, # Number of training epochs before evaluating
+            evaluate_freq = evaluate_freq, # Number of training epochs before evaluating
             # for early stopping.
-            patience = 3,
+            patience = patience,
             direction=direction,
             seed=seed,
             model_dir=model_dir)
