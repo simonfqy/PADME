@@ -122,7 +122,7 @@ def load_prot_desc_dict(prot_desc_path):
 
 def run_analysis(dataset='davis', 
                  featurizer = 'Weave',
-                 mode = 'regression',
+                 mode = 'classification',
                  split= 'random',
                  threshold = 7.0,
                  direction = False,
@@ -130,19 +130,19 @@ def run_analysis(dataset='davis',
                  fold_num = 5,
                  hyper_parameters=None,
                  hyper_param_search = False, 
-                 max_iter = 2,
+                 max_iter = 42,
                  search_range = 3,
                  reload = True,
-                 cross_validation = False,
+                 cross_validation = True,
                  test = False,
                  predict_cold = False, # Determines whether cold-start drugs and targets are tested or validated.
                  early_stopping = True,
-                 evaluate_freq = 2, # Number of training epochs before evaluating
+                 evaluate_freq = 3, # Number of training epochs before evaluating
                  # for early stopping.
                  patience = 3,
                  seed=123,
                  log_file = 'GPhypersearch_temp.log',
-                 model_dir = './model_dir2',
+                 model_dir = './cls_model_dir',
                  prot_desc_path="davis_data/prot_desc.csv"):
   if mode == 'regression':
     metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
@@ -246,6 +246,7 @@ def run_analysis(dataset='davis',
             None,
             tasks,
             transformers,
+            n_features,
             metric,
             model,
             prot_desc_dict,
@@ -295,6 +296,7 @@ def run_analysis(dataset='davis',
             None,
             tasks,
             transformers,
+            n_features,
             metric,
             model,
             prot_desc_dict,
@@ -310,15 +312,18 @@ def run_analysis(dataset='davis',
         valid_scores_list.append(valid_score)
   time_finish_fitting = time.time()
   
-  if mode == 'regression':
-    if predict_cold:
-      results_file = 'results_cold.csv'
-    else:
-      results_file = 'results.csv'
-  elif mode == 'classification':
-    results_file = 'results_cls.csv'
+  results_file = 'results'
+  
+  if mode == 'classification':
+    results_file += '_cls'
   elif mode == 'reg-threshold':
-    results_file = 'results_thrhd.csv'
+    results_file += '_thrhd'
+  if predict_cold:
+    results_file += '_cold'
+  if cross_validation:
+    results_file += '_cv'
+
+  results_file += '.csv'
 
   with open(os.path.join(out_path, results_file), 'a') as f:
     writer = csv.writer(f)
