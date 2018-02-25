@@ -23,7 +23,7 @@ molList = [molName for molName in molList if molName == molName]
 invalid_val = -1.0
 #print(len(molList))
 interactions = []
-rowCount = 1 
+#rowCount = 1 
 for row in df.itertuples():  
   values = list(row)
   if values[0] != values[0]:
@@ -40,7 +40,7 @@ for row in df.itertuples():
     else:
       intxn.append(invalid_val)  
   interactions.append(intxn)
-  rowCount += 1  
+  #rowCount += 1  
   #print(interactions)
 interactions = np.array(interactions)
 #interaction_bin = (interactions >= 7.6) * 1
