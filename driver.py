@@ -109,20 +109,20 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
   return tasks, all_dataset, transformers
   # TODO: the implementation above could be prone to errors. Not entirely sure.
 
-def load_prot_desc_dict(prot_desc_path):
+def load_prot_desc_dict(prot_desc_dict, prot_desc_path):
   df = pd.read_csv(prot_desc_path, index_col=0)
-  #protList = list(df.index)
-  prot_desc_dict = {}
+  #protList = list(df.index)  
   for row in df.itertuples():
     descriptor = row[2:]
     descriptor = np.array(descriptor)
     descriptor = np.reshape(descriptor, (1, len(descriptor)))
+    assert row[0] not in prot_desc_dict
     prot_desc_dict[row[0]] = descriptor    
-  return prot_desc_dict
+  #return prot_desc_dict
 
-def run_analysis(dataset='davis', 
+def run_analysis(dataset='davis-metz', 
                  featurizer = 'Weave',
-                 mode = 'classification',
+                 mode = 'regression',
                  split= 'random',
                  threshold = 7.0,
                  direction = False,
@@ -143,7 +143,8 @@ def run_analysis(dataset='davis',
                  seed=123,
                  log_file = 'GPhypersearch_temp.log',
                  model_dir = './model_dir',
-                 prot_desc_path="davis_data/prot_desc.csv"):
+                 prot_desc_path=["davis_data/prot_desc.csv",
+                   "metz_data/prot_desc.csv"]):
   if mode == 'regression':
     metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
   elif mode == 'classification':
@@ -167,9 +168,11 @@ def run_analysis(dataset='davis',
     tasks, all_dataset, transformers = load_davis(featurizer=featurizer, cross_validation=cross_validation,
                                                   test=test, split=split, reload=reload, mode=mode,
                                                   predict_cold=predict_cold)
-    
-  prot_desc_dict = load_prot_desc_dict(prot_desc_path)
+  prot_desc_dict = {}
+  for path in prot_desc_path:
+    load_prot_desc_dict(prot_desc_dict, path)
   prot_desc_length = 8421
+  pdb.set_trace()
   
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
