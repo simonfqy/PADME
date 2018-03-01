@@ -177,8 +177,7 @@ with open('davis-metz-kiba.csv', 'w', newline='') as csvfile:
     kiba_val = kiba_value[index] 
     davis_val = '' if davis_val == invalid_val else davis_val    
     metz_val = '' if metz_val == invalid_val else metz_val
-    #if kiba_val == invalid_val:
-    #  pdb.set_trace()
+    
     kiba_val = '' if kiba_val == invalid_val else kiba_val
     writer.writerow({'davis': davis_val, 'metz': metz_val, 'kiba': kiba_val,
       'smiles': cmpd_smiles[index], 'proteinName': protein_name[index],
