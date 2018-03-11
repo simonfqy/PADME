@@ -118,7 +118,7 @@ def load_kinases(featurizer = 'Weave', cross_validation=False, test=False, split
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
     tasks = ['davis', 'metz', 'kiba']
-    file_name = "davis_metz_kiba2.csv"
+    file_name = "davis_metz_kiba.csv"
   elif mode == 'classification':
     tasks = ['davis_bin', 'metz_bin', 'kiba_bin']
     file_name = "davis_metz_kiba_bin.csv"
@@ -409,14 +409,22 @@ def run_analysis(_):
       for h in range(fold_num):
         train_score = train_scores_list[h]
         valid_score = valid_scores_list[h]
-        for i in train_score[model_name]:
+
+        train_score_dict = train_score[model_name]
+        valid_score_dict = valid_score[model_name]
+        
+        if len(tasks > 1):
+          train_score_dict = train_score[model_name]['averaged']
+          valid_score_dict = valid_score[model_name]['averaged']          
+
+        for i in train_score_dict:
           # i here is the metric name, like 'rms_score'.
           if len(tasks) > 1:
-            this_train_score = train_score[model_name]['averaged'][i]
-            this_valid_score = valid_score[model_name]['averaged'][i]            
+            this_train_score = train_score_dict[i]
+            this_valid_score = valid_score_dict[i]            
           else:
-            this_train_score = train_score[model_name][i]
-            this_valid_score = valid_score[model_name][i]            
+            this_train_score = train_score_dict[i]
+            this_valid_score = valid_score_dict[i]            
           
           output_line = [
                 dataset,
@@ -444,19 +452,25 @@ def run_analysis(_):
       valid_score = valid_scores_list[0]
       if test:
         test_score = test_scores_list[0]
-      for i in train_score[model_name]:
+
+      train_score_dict = train_score[model_name]
+      valid_score_dict = valid_score[model_name]
+      if test:
+        test_score_dict = test_score[model_name]
+      if len(tasks > 1):
+        train_score_dict = train_score[model_name]['averaged']
+        valid_score_dict = valid_score[model_name]['averaged']
+        if test:
+          test_score_dict = test_score[model_name]['averaged']
+
+      for i in train_score_dict:
         # i here is the metric name, like 'rms_score'.
-        if len(tasks) > 1:
-          this_train_score = train_score[model_name]['averaged'][i]
-          this_valid_score = valid_score[model_name]['averaged'][i]
-          if test:
-            this_test_score = test_score[model_name]['averaged'][i]
-        else:
-          this_train_score = train_score[model_name][i]
-          this_valid_score = valid_score[model_name][i]
-          if test:
-            this_test_score = test_score[model_name][i]
-      
+        
+        this_train_score = train_score_dict[i]
+        this_valid_score = valid_score_dict[i]
+        if test:
+          this_test_score = test_score_dict[i]
+              
         output_line = [
                   dataset,
                   model_name, i, 'train',
