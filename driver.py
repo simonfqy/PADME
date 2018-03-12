@@ -413,19 +413,14 @@ def run_analysis(_):
         train_score_dict = train_score[model_name]
         valid_score_dict = valid_score[model_name]
         
-        if len(tasks > 1):
+        if len(tasks) > 1:
           train_score_dict = train_score[model_name]['averaged']
           valid_score_dict = valid_score[model_name]['averaged']          
 
         for i in train_score_dict:
-          # i here is the metric name, like 'rms_score'.
-          if len(tasks) > 1:
-            this_train_score = train_score_dict[i]
-            this_valid_score = valid_score_dict[i]            
-          else:
-            this_train_score = train_score_dict[i]
-            this_valid_score = valid_score_dict[i]            
-          
+          # i here is the metric name, like 'rms_score'.        
+          this_train_score = train_score_dict[i]
+          this_valid_score = valid_score_dict[i] 
           output_line = [
                 dataset,
                 model_name, i, 'train',
@@ -457,15 +452,14 @@ def run_analysis(_):
       valid_score_dict = valid_score[model_name]
       if test:
         test_score_dict = test_score[model_name]
-      if len(tasks > 1):
+      if len(tasks) > 1:
         train_score_dict = train_score[model_name]['averaged']
         valid_score_dict = valid_score[model_name]['averaged']
         if test:
           test_score_dict = test_score[model_name]['averaged']
 
       for i in train_score_dict:
-        # i here is the metric name, like 'rms_score'.
-        
+        # i here is the metric name, like 'rms_score'.        
         this_train_score = train_score_dict[i]
         this_valid_score = valid_score_dict[i]
         if test:
