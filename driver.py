@@ -118,7 +118,7 @@ def load_kinases(featurizer = 'Weave', cross_validation=False, test=False, split
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
     tasks = ['davis', 'metz', 'kiba']
-    file_name = "davis_metz_kiba.csv"
+    file_name = "davis_metz_kiba2.csv"
   elif mode == 'classification':
     tasks = ['davis_bin', 'metz_bin', 'kiba_bin']
     file_name = "davis_metz_kiba_bin.csv"
@@ -130,11 +130,11 @@ def load_kinases(featurizer = 'Weave', cross_validation=False, test=False, split
       delim = "_cold" + delim
     if cross_validation:
       delim = "_CV" + delim
-      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
+      save_dir = os.path.join(data_dir, featurizer + delim + "all_kinase/" + mode + "/" + split)
       loaded, all_dataset, transformers = dcCustom.utils.save.load_cv_dataset_from_disk(
           save_dir, K)
     else:
-      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
+      save_dir = os.path.join(data_dir, featurizer + delim + "all_kinase/" + mode + "/" + split)
       loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
           save_dir)
     if loaded:
@@ -146,7 +146,7 @@ def load_kinases(featurizer = 'Weave', cross_validation=False, test=False, split
   elif featurizer == 'ECFP':
     featurizer = deepchem.feat.CircularFingerprint(size=1024)
   elif featurizer == 'GraphConv':
-    featurizer = deepchem.feat.ConvMolFeaturizer()
+    featurizer = dcCustom.feat.ConvMolFeaturizer()
   
   loader = dcCustom.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
@@ -236,7 +236,7 @@ def run_analysis(_):
   prot_desc_path=FLAGS.prot_desc_path                
                  
   assert model == model # Not a NAN
-  searchObj = re.search('reg', model)
+  searchObj = re.search('reg', model, re.I)
   mode = 'regression' if searchObj else 'classification'
   if mode == 'regression':
     if thresholding:
@@ -298,8 +298,7 @@ def run_analysis(_):
   train_scores_list = []
   valid_scores_list = []
   test_scores_list = []
-    
-  # TODO: don't forget to check the gaussian_process.py. There might be problems.
+   
   if hyper_param_search: # We don't use cross validation in this case.
     if hyper_parameters is None:
       hyper_parameters = hps[model]
