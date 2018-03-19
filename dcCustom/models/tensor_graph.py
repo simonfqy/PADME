@@ -9,10 +9,11 @@ import tensorflow as tf
 import math
 import pdb
 from tensorflow.python.pywrap_tensorflow_internal import NewCheckpointReader
+from tensorflow.python import debug as tf_debug
 
 from dcCustom.data import NumpyDataset
 from dcCustom.models.models import Model
-from deepchem.models.tensorgraph.layers import InputFifoQueue, Label, Feature, \
+from dcCustom.models.tensorgraph.layers import InputFifoQueue, Label, Feature, \
   Weights, Constant, Dense
 from deepchem.models.tensorgraph.optimizers import Adam
 from deepchem.trans import undo_transforms
@@ -23,12 +24,15 @@ class TensorGraph(Model):
 
   def __init__(self,
                tensorboard=False,
-               tensorboard_log_frequency=100,
+               tensorboard_log_frequency=30,
                batch_size=100,
                random_seed=None,
                use_queue=True,
                graph=None,
                learning_rate=0.001,
+               dropout_prob = 0.5,
+               num_dense_layers = 3,
+               dense_cmb_layer_size = 256,
                configproto=None,
                **kwargs):
     """
@@ -66,6 +70,10 @@ class TensorGraph(Model):
     self.queue_installed = False
     self.optimizer = Adam(
         learning_rate=learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-7)
+    self.dropout_prob = dropout_prob
+    # TODO: the following two variables are temporary, for hyperparameter tuning purpose.
+    self.num_dense_layers = num_dense_layers
+    self.dense_cmb_layer_size = dense_cmb_layer_size
     self.configproto = configproto
 
     # Singular place to hold Tensor objects which don't serialize
@@ -128,6 +136,8 @@ class TensorGraph(Model):
           # for early stopping.
           patience = 3,
           transformers=None,
+          per_task_metrics=False,
+          tasks=None,
           **kwargs):
     """Train this model on a dataset.
 
@@ -158,6 +168,7 @@ class TensorGraph(Model):
               dataset, epochs=nb_epoch, deterministic=deterministic),
           max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
     # Using early stopping.
+    
     assert evaluate_freq > 0
     assert direction is not None
     assert checkpoint_interval > 0
@@ -176,11 +187,10 @@ class TensorGraph(Model):
     wait_time = 0
     
     best_score = math.inf * -1
-    
+        
     with self._get_tf("Graph").as_default():
-      v1 = tf.get_variable("v1", shape=[3], initializer = tf.zeros_initializer)
-      saver = tf.train.Saver(
-              max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
+      #v1 = tf.get_variable("v1", shape=[3], initializer = tf.zeros_initializer)
+      
       optimal_epoch = 0
       epoch_count = 0
       for i in range(iterations):
@@ -193,15 +203,31 @@ class TensorGraph(Model):
             self.default_generator(
                 dataset, epochs=num_epoch, deterministic=deterministic),
             max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
-        valid_score = self.evaluate(valid_dataset, metric, transformers)
-        val_sc = valid_score[metric[0].name] 
+        saver = tf.train.Saver(
+              max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
+        if not per_task_metrics:
+          valid_score = self.evaluate(valid_dataset, metric, transformers, 
+            per_task_metrics=per_task_metrics)          
+        else:
+          valid_score, per_task_sc_val = self.evaluate(valid_dataset, metric,
+            transformers, per_task_metrics=per_task_metrics)
+          per_task_sc_val = per_task_sc_val[metric[0].name]          
+          if tasks is None:
+            tasks=list(range(1, len(per_task_sc_val)+1))
+          for task, task_sc in zip(tasks, per_task_sc_val):            
+            print('The score for task %s is %g' % (str(task), task_sc))
+          
+        # TODO: the following line is hardcoded, which might need to be changed in the future.
+        # For now, we just assume that the first metric would be the metric that we want to optimize.
+        # In the future, we might want to have some form of combination of metrics.
+        val_sc = valid_score[metric[0].name]
         # Resuming the path of saving.
         self.save_file = "%s/%s" % (self.model_dir, "model")
         wait_time += 1
         epoch_count += num_epoch
         if not direction:
-          val_sc = -1 * val_sc
-        
+          val_sc = -1 * val_sc        
+      
         if val_sc > best_score:
           best_score = val_sc
           wait_time = 0
@@ -211,8 +237,9 @@ class TensorGraph(Model):
         if (wait_time > patience):
           break       
       self.restore() #This only restores from the self.model_dir
-      self.evaluate(valid_dataset, metric, transformers)
-    return optimal_epoch
+      if not direction:
+        best_score = -1 * best_score
+    return [optimal_epoch, best_score]
 
   def fit_generator(self,
                     feed_dict_generator,
@@ -284,6 +311,7 @@ class TensorGraph(Model):
         should_log = (self.tensorboard and
                       n_samples % self.tensorboard_log_frequency == 0)
         fetches = [train_op, loss.out_tensor]
+        
         if should_log:
           fetches.append(self._get_tf("summary_op"))
         fetched_values = self.session.run(fetches, feed_dict=feed_dict)
@@ -543,12 +571,15 @@ class TensorGraph(Model):
           self.rnn_initial_states += layer.rnn_initial_states
           self.rnn_final_states += layer.rnn_final_states
           self.rnn_zero_states += layer.rnn_zero_states
-          if type(layer) is Dense:
-            tf.summary.scalar('%s/fraction_of_zero_values'%layer.name, 
-              tf.nn.zero_fraction(layer.out_tensor)) 
-            layer.set_summary('histogram')
-          layer.add_summary_to_tg()
+          if self.tensorboard:
+            if type(layer) is Dense:
+              tf.summary.scalar('%s/fraction_of_zero_values'%layer.name, 
+                tf.nn.zero_fraction(layer.out_tensor)) 
+              layer.set_summary('histogram')
+              layer.add_summary_to_tg()
       self.session = tf.Session(config=self.configproto)
+      #self.session = tf_debug.LocalCLIDebugWrapperSession(self.session, dump_root = './tfdbg')
+      #self.session.add_tensor_filter('has_inf_or_nan', tf_debug.has_inf_or_nan)
       self.built = True
 
       # Ensure all training operators have been created.
