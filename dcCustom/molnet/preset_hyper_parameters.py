@@ -56,6 +56,9 @@ hps['graphconv'] = {
     'learning_rate': 0.0005,
     'n_filters': 64,
     'n_fully_connected_nodes': 128,
+    'dropout_prob': 0.2,
+    'num_dense_layer': 3,
+    'dense_cmb_layer_size': 512,
     'seed': 123
 }
 hps['dag'] = {
@@ -66,12 +69,25 @@ hps['dag'] = {
     'default_max_atoms': 60,
     'seed': 123
 }
+
 hps['weave'] = {
-    'batch_size': 64,
-    'nb_epoch': 40,
-    'learning_rate': 0.0005,
-    'n_graph_feat': 128,
+    #'batch_size': 105,
+    #'batch_size': 168,
+    'batch_size': 230,
+    'nb_epoch': 66,
+    'learning_rate': 3.385e-5,
+    #'n_graph_feat': 450,
+    #'n_graph_feat': 248,
+    'n_graph_feat': 194,
     'n_pair_feat': 14,
+    #'n_hidden': 210,
+    #'n_hidden': 202,
+    'n_hidden': 509,
+    #'dropout_prob': 0.1,
+    #'dropout_prob': 0.15,
+    'dropout_prob': 0.10025,
+    'num_dense_layer': 3,
+    'dense_cmb_layer_size': 512,
     'seed': 123
 }
 hps['textcnn'] = {
@@ -135,6 +151,9 @@ hps['graphconvreg'] = {
     'learning_rate': 0.0005,
     'n_filters': 128,
     'n_fully_connected_nodes': 256,
+    'dropout_prob': 0.2,
+    'num_dense_layer': 3,
+    'dense_cmb_layer_size': 512,
     'seed': 123
 }
 hps['dtnn'] = {
@@ -154,13 +173,24 @@ hps['dag_regression'] = {
     'seed': 123
 }
 hps['weave_regression'] = {
-    'batch_size': 150,
-    'nb_epoch': 32,
-    'learning_rate': 4.8e-5,
-    'n_graph_feat': 371,
+    #'batch_size': 110,
+    #'batch_size': 93,
+    'batch_size': 168,
+    'nb_epoch': 1,
+    #'learning_rate': 6.3e-5,
+    'learning_rate': 5.233e-5,
+    #'n_graph_feat': 450,
+    #'n_graph_feat': 223,
+    'n_graph_feat': 150,
     'n_pair_feat': 14,
-    'n_hidden': 150,
-    'dropout_prob': 0.2,
+    'n_hidden': 110,
+    #'n_hidden': 251,
+    #'n_hidden': 693,
+    #'dropout_prob': 0.1,
+    #'dropout_prob': 0.082,
+    'dropout_prob': 0.1052,
+    'num_dense_layer': 3,
+    'dense_cmb_layer_size': 512,
     'seed': 123
 }
 hps['textcnn_regression'] = {
