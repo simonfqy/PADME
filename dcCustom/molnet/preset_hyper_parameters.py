@@ -128,7 +128,9 @@ hps['tf_regression'] = {
     'penalty_type': 'l2',
     'batch_size': 128,
     'nb_epoch': 50,
-    'learning_rate': 0.0008
+    'learning_rate': 0.0008,
+    'num_dense_layer': 3,
+    'dense_cmb_layer_size': 512
 }
 hps['tf_regression_ft'] = {
     'layer_sizes': [400, 100, 100],
@@ -215,6 +217,9 @@ hps['mpnn'] = {
     'learning_rate': 0.001,
     'T': 2,
     'M': 5,
+    'dropout_prob': 0.105,
+    'num_dense_layer': 3,
+    'dense_cmb_layer_size': 512,
     'seed': 123
 }
 
