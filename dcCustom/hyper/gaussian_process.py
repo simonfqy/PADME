@@ -326,7 +326,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       f.write('\n')
     if isinstance(self.model_class, str) or isinstance(self.model_class,
                                                        unicode):
-      try:
+      if mode == 'classification':
         train_scores, valid_scores, _, opt_epoch = model_classification(
             train_dataset,
             valid_dataset,
@@ -344,7 +344,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             patience=patience,
             direction=direction,
             model_dir=model_dir)
-      except AssertionError:
+      elif mode == 'regression' or mode == 'reg-threshold':
         train_scores, valid_scores, _, opt_epoch = model_regression(
             train_dataset,
             valid_dataset,
@@ -362,6 +362,8 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             patience=patience,
             direction=direction,
             model_dir=model_dir)
+      else:
+        raise ValueError("Invalid mode!")
       if n_tasks > 1:
         score = valid_scores[self.model_class]['averaged'][metric[0].name]
       else:
