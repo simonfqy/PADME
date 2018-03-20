@@ -13,12 +13,12 @@ from __future__ import unicode_literals
 import numpy as np
 import tensorflow as tf
 import pdb
-from deepchem.nn import activations
-from deepchem.nn import initializations
-from deepchem.nn import model_ops
+from dcCustom.nn import activations
+from dcCustom.nn import initializations
+from dcCustom.nn import model_ops
 
-from deepchem.models.tensorgraph.layers import Layer, LayerSplitter
-from deepchem.models.tensorgraph.layers import convert_to_layers
+from dcCustom.models.tensorgraph.layers import Layer, LayerSplitter
+from dcCustom.models.tensorgraph.layers import convert_to_layers
 
 
 class WeaveLayer(Layer):
@@ -213,7 +213,7 @@ class WeaveGather(Layer):
                gaussian_expand=False,
                init='glorot_uniform',
                activation='tanh',
-               epsilon=1e-3,
+               epsilon=1e-7,
                momentum=0.99,
                **kwargs):
     """
@@ -289,8 +289,10 @@ class WeaveGather(Layer):
     ]
     dist_max = [dist[i].prob(gaussian_memberships[i][0]) for i in range(11)]
     outputs = [dist[i].prob(x) / dist_max[i] for i in range(11)]
+    #outputs = [a + self.epsilon for a in outputs]
     outputs = tf.stack(outputs, axis=2)
-    outputs = outputs / tf.reduce_sum(outputs, axis=2, keep_dims=True)
+    outputs = (outputs + self.epsilon) / tf.add(tf.reduce_sum(outputs, axis=2, 
+      keep_dims=True), self.epsilon)
     outputs = tf.reshape(outputs, [-1, self.n_input * 11])
     return outputs
 
