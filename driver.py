@@ -243,10 +243,11 @@ def run_analysis(_):
       mode = 'reg-threshold'
 
   if mode == 'regression':
-    metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
+    #metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean)]
+    metric = [dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean)]
   elif mode == 'classification':
-    metric = [deepchem.metrics.Metric(deepchem.metrics.roc_auc_score, np.mean),
-      deepchem.metrics.Metric(deepchem.metrics.prc_auc_score, np.mean)]
+    metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean),
+      dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean)]
   elif mode == "reg-threshold":
     # TODO: this [0] is just a temporary solution. Need to implement per-task thresholds.
     # It is not a very trivial task.
@@ -298,6 +299,9 @@ def run_analysis(_):
   train_scores_list = []
   valid_scores_list = []
   test_scores_list = []
+
+  matchObj = re.match('mpnn', model, re.I)
+  model = 'mpnn' if matchObj else model
    
   if hyper_param_search: # We don't use cross validation in this case.
     if hyper_parameters is None:
@@ -322,7 +326,8 @@ def run_analysis(_):
         evaluate_freq=evaluate_freq,
         patience=patience,
         model_dir=model_dir,
-        log_file=log_file)
+        log_file=log_file,
+        mode=mode)
     hyper_parameters = hyper_param_opt
   
   opt_epoch = -1
@@ -522,10 +527,10 @@ if __name__ == '__main__':
   )
   parser.add_argument(
       '--direction',
-      type=bool,
       default=False,
       help='The direction of desired metric values. False for minimization, True\
-        for maximization.'
+        for maximization.',
+      action='store_true'
   )
   parser.add_argument(
       '--out_path',
