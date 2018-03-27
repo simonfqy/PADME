@@ -9,7 +9,7 @@ from dcCustom.data import NumpyDataset
 from deepchem.feat.graph_features import ConvMolFeaturizer
 from deepchem.feat.mol_graphs import ConvMol
 from deepchem.metrics import to_one_hot
-from deepchem.models.tensorgraph.graph_layers import \
+from dcCustom.models.tensorgraph.graph_layers import \
     DTNNEmbedding, DTNNStep, DTNNGather, DAGLayer, \
     DAGGather, DTNNExtract, MessagePassing, SetGather
 from dcCustom.models.tensorgraph.graph_layers import WeaveLayerFactory, WeaveGather
@@ -225,7 +225,6 @@ class WeaveTensorGraph(TensorGraph):
         feed_dict[self.atom_to_pair] = np.concatenate(atom_to_pair, axis=0)
         feed_dict[self.prot_desc] = np.concatenate(prot_descriptor, axis=0)
         
-        #pdb.set_trace()
         yield feed_dict
 
   def predict_on_generator(self, generator, transformers=[], outputs=None):
@@ -783,9 +782,9 @@ class GraphConvTensorGraph(TensorGraph):
     else:
       readout = Dropout(self.dropout_prob, in_layers=[readout])
     
-    prot_desc = Dropout(self.dropout_prob, in_layers = self.prot_desc)
+    prot_desc = Dropout(self.dropout_prob, in_layers = [self.prot_desc])
     recent = Concat(in_layers=[readout, prot_desc])
-    for _ in range(self.num_dense_layers):
+    for _ in range(self.num_dense_layer):
       dense_combined = Dense(out_channels=self.dense_cmb_layer_size, activation_fn=tf.nn.relu,
         in_layers=[recent])
       recent = BatchNormalization(epsilon=1e-5, in_layers=[dense_combined])
@@ -848,12 +847,27 @@ class GraphConvTensorGraph(TensorGraph):
         d[self.degree_slice] = multiConvMol.deg_slice
         d[self.membership] = multiConvMol.membership
         prot_name_list = [prot.get_name() for prot in prot_list]
-        d[self.prot_desc] = [self.prot_desc_dict[prot_name] for prot_name in prot_name_list]
-        pdb.set_trace()
+        prot_desc = [self.prot_desc_dict[prot_name] for prot_name in prot_name_list]
+        d[self.prot_desc] = np.squeeze(np.array(prot_desc))
         for i in range(1, len(multiConvMol.get_deg_adjacency_lists())):
           d[self.deg_adjs[i - 1]] = multiConvMol.get_deg_adjacency_lists()[i]
+        
         yield d
+  '''
+  def predict_on_generator(self, generator, transformers=[], outputs=None):
+    out = super(GraphConvTensorGraph, self).predict_on_generator(
+        generator, transformers=[], outputs=outputs)
+    pdb.set_trace()
+    if outputs is None:
+      outputs = self.outputs
+    if len(outputs) > 1:
+      out = np.stack(out, axis=1)
 
+    out = undo_transforms(out, transformers)
+    return out
+  '''
+    # TODO: need to figure out about n_samples.
+  
   def predict_on_generator(self, generator, transformers=[], outputs=None):
     if not self.built:
       self.build()
@@ -871,6 +885,7 @@ class GraphConvTensorGraph(TensorGraph):
         }
         # Recording the number of samples in the input batch
         n_samples = max(feed_dict[self.membership.out_tensor]) + 1
+        #pdb.set_trace()
         feed_dict[self._training_placeholder] = 0.0
         feed_results = self.session.run(outputs, feed_dict=feed_dict)
         if len(feed_results) > 1:
@@ -893,7 +908,7 @@ class GraphConvTensorGraph(TensorGraph):
         return final_results[0]
       else:
         return final_results
-
+  
   def predict_proba_on_generator(self, generator, transformers=[],
                                  outputs=None):
     if not self.built:
@@ -916,6 +931,7 @@ class GraphConvTensorGraph(TensorGraph):
         results.append(result[:n_samples])
       return np.concatenate(results, axis=0)
 
+    
   def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False):
     if not self.built:
       self.build()
@@ -927,7 +943,7 @@ class GraphConvTensorGraph(TensorGraph):
         labels=self.my_labels,
         weights=[self.my_task_weights],
         per_task_metrics=per_task_metrics)
-
+  
   def bayesian_predict(self,
                        dataset,
                        transformers=[],
@@ -1078,9 +1094,10 @@ class MPNNTensorGraph(TensorGraph):
         # in_layers=[mol_embeddings])
     # TODO: Not quite sure whether we should let mol_embeddings have the same dropout rate.
     #mol_embeddings = Dropout(self.dropout_prob, in_layers = self.mol_embeddings)
+
     prot_desc = Dropout(self.dropout_prob, in_layers = self.prot_desc)
     recent = Concat(in_layers=[mol_embeddings, prot_desc])
-    for _ in range(self.num_dense_layers):
+    for _ in range(self.num_dense_layer):
       dense_combined = Dense(out_channels = self.dense_cmb_layer_size, activation_fn = tf.nn.relu,
         in_layers=[recent])
       recent = BatchNormalization(epsilon=1e-5, in_layers=[dense_combined])
@@ -1172,7 +1189,7 @@ class MPNNTensorGraph(TensorGraph):
                          (n_atoms * n_atoms, self.n_pair_feat)))
           protein_name = prot.get_name()
           prot_descriptor.append(self.prot_desc_dict[protein_name])
-
+        
         feed_dict[self.atom_features] = np.concatenate(atom_feat, axis=0)
         feed_dict[self.pair_features] = np.concatenate(pair_feat, axis=0)
         feed_dict[self.atom_split] = np.array(atom_split)
