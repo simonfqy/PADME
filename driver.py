@@ -22,181 +22,6 @@ from dcCustom.molnet.run_benchmark_models import model_regression, model_classif
 from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 FLAGS = None
-
-def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
-  reload=True, K = 5, mode = 'regression', predict_cold = False): 
-  # The last parameter means only splitting into training and validation sets.
-
-  if cross_validation:
-    assert not test
-
-  if mode == 'regression' or mode == 'reg-threshold':
-    mode = 'regression'
-    tasks = ['interaction_value']
-    file_name = "restructured.csv"
-  elif mode == 'classification':
-    tasks = ['interaction_bin']
-    file_name = "restructured_bin.csv"
-
-  data_dir = "davis_data/"
-  if reload:
-    delim = "/"
-    if predict_cold:
-      delim = "_cold" + delim
-    if cross_validation:
-      delim = "_CV" + delim
-      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
-      loaded, all_dataset, transformers = dcCustom.utils.save.load_cv_dataset_from_disk(
-          save_dir, K)
-    else:
-      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
-      loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
-          save_dir)
-    if loaded:
-      return tasks, all_dataset, transformers
-  
-  dataset_file = os.path.join(data_dir, file_name)
-  if featurizer == 'Weave':
-    featurizer = dcCustom.feat.WeaveFeaturizer()
-  loader = dcCustom.data.CSVLoader(
-      tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
-      featurizer=featurizer)
-  dataset = loader.featurize(dataset_file, shard_size=8192)
-  
-  if mode == 'regression':
-    transformers = [
-          deepchem.trans.NormalizationTransformer(
-              transform_y=True, dataset=dataset)
-    ]
-  elif mode == 'classification':
-    transformers = [
-        deepchem.trans.BalancingTransformer(transform_w=True, dataset=dataset)
-    ]
-    
-  print("About to transform data")
-  for transformer in transformers:
-    dataset = transformer.transform(dataset)
-    
-  splitters = {
-      'index': deepchem.splits.IndexSplitter(),
-      'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold),
-      'scaffold': deepchem.splits.ScaffoldSplitter(),
-      'butina': deepchem.splits.ButinaSplitter(),
-      'task': deepchem.splits.TaskSplitter()
-  }
-  splitter = splitters[split]
-  if test:
-    train, valid, test = splitter.train_valid_test_split(dataset)
-    all_dataset = (train, valid, test)
-    if reload:
-      deepchem.utils.save.save_dataset_to_disk(save_dir, train, valid, test,
-                                               transformers)
-  elif cross_validation:
-    fold_datasets = splitter.k_fold_split(dataset, K)
-    all_dataset = fold_datasets
-    if reload:
-      dcCustom.utils.save.save_cv_dataset_to_disk(save_dir, all_dataset, K, transformers)
-
-  else:
-    # not cross validating, and not testing.
-    train, valid, test = splitter.train_valid_test_split(dataset, frac_valid=0.2,
-      frac_test=0)
-    all_dataset = (train, valid, test)
-    if reload:
-      deepchem.utils.save.save_dataset_to_disk(save_dir, train, valid, test,
-                                               transformers)
-  
-  return tasks, all_dataset, transformers
-
-def load_kinases(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
-  reload=True, K = 5, mode = 'regression', predict_cold = False): 
-  # The last parameter means only splitting into training and validation sets.
-
-  if cross_validation:
-    assert not test
-
-  if mode == 'regression' or mode == 'reg-threshold':
-    mode = 'regression'
-    tasks = ['davis', 'metz', 'kiba']
-    file_name = "davis_metz_kiba2.csv"
-  elif mode == 'classification':
-    tasks = ['davis_bin', 'metz_bin', 'kiba_bin']
-    file_name = "davis_metz_kiba_bin.csv"
-
-  data_dir = "synthesized_data/"
-  if reload:
-    delim = "/"
-    if predict_cold:
-      delim = "_cold" + delim
-    if cross_validation:
-      delim = "_CV" + delim
-      save_dir = os.path.join(data_dir, featurizer + delim + "all_kinase/" + mode + "/" + split)
-      loaded, all_dataset, transformers = dcCustom.utils.save.load_cv_dataset_from_disk(
-          save_dir, K)
-    else:
-      save_dir = os.path.join(data_dir, featurizer + delim + "all_kinase/" + mode + "/" + split)
-      loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
-          save_dir)
-    if loaded:
-      return tasks, all_dataset, transformers
-  
-  dataset_file = os.path.join(data_dir, file_name)
-  if featurizer == 'Weave':
-    featurizer = dcCustom.feat.WeaveFeaturizer()
-  elif featurizer == 'ECFP':
-    featurizer = deepchem.feat.CircularFingerprint(size=1024)
-  elif featurizer == 'GraphConv':
-    featurizer = dcCustom.feat.ConvMolFeaturizer()
-  
-  loader = dcCustom.data.CSVLoader(
-      tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
-      featurizer=featurizer)
-  dataset = loader.featurize(dataset_file, shard_size=8192)
-  
-  if mode == 'regression':
-    transformers = [
-          deepchem.trans.NormalizationTransformer(
-              transform_y=True, dataset=dataset)
-    ]
-  elif mode == 'classification':
-    transformers = [
-        deepchem.trans.BalancingTransformer(transform_w=True, dataset=dataset)
-    ]
-    
-  print("About to transform data")
-  for transformer in transformers:
-    dataset = transformer.transform(dataset)
-    
-  splitters = {
-      'index': deepchem.splits.IndexSplitter(),
-      'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold),
-      'scaffold': deepchem.splits.ScaffoldSplitter(),
-      'butina': deepchem.splits.ButinaSplitter(),
-      'task': deepchem.splits.TaskSplitter()
-  }
-  splitter = splitters[split]
-  if test:
-    train, valid, test = splitter.train_valid_test_split(dataset)
-    all_dataset = (train, valid, test)
-    if reload:
-      deepchem.utils.save.save_dataset_to_disk(save_dir, train, valid, test,
-                                               transformers)
-  elif cross_validation:
-    fold_datasets = splitter.k_fold_split(dataset, K)
-    all_dataset = fold_datasets
-    if reload:
-      dcCustom.utils.save.save_cv_dataset_to_disk(save_dir, all_dataset, K, transformers)
-
-  else:
-    # not cross validating, and not testing.
-    train, valid, test = splitter.train_valid_test_split(dataset, frac_valid=0.2,
-      frac_test=0)
-    all_dataset = (train, valid, test)
-    if reload:
-      deepchem.utils.save.save_dataset_to_disk(save_dir, train, valid, test,
-                                               transformers)
-  
-  return tasks, all_dataset, transformers  
   
 def load_prot_desc_dict(prot_desc_dict, prot_desc_path):
   df = pd.read_csv(prot_desc_path, index_col=0)
@@ -214,7 +39,7 @@ def run_analysis(_):
   thresholding = FLAGS.thresholding
   split= FLAGS.split
   threshold = FLAGS.threshold
-  direction = FLAGS.direction
+  #direction = FLAGS.direction
   out_path = FLAGS.out_path
   fold_num = FLAGS.fold_num
   hyper_parameters=FLAGS.hyper_parameters
@@ -241,24 +66,29 @@ def run_analysis(_):
   if mode == 'regression':
     if thresholding:
       mode = 'reg-threshold'
+  direction = False
 
   if mode == 'regression':
-    #metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean)]
-    metric = [dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean)]
+    metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean),
+      dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean),
+      dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean)]
   elif mode == 'classification':
+    direction = True
     metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean),
       dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean)]
   elif mode == "reg-threshold":
     # TODO: this [0] is just a temporary solution. Need to implement per-task thresholds.
     # It is not a very trivial task.
+    direction = True
     metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
       threshold=threshold[0], mode="regression")]
 
   # We assume that values above the threshold are "on" or 1, those below are "off"
   # or 0.  
   loading_functions = {
-    'davis': load_davis,
-    'all_kinase': load_kinases
+    'davis': dcCustom.molnet.load_davis,
+    'all_kinase': dcCustom.molnet.load_kinases,
+    'tc_kinase':dcCustom.molnet.load_tc_kinases
   }  
   # if mode == 'regression' or mode == 'reg-threshold':
     # model = 'weave_regression'
@@ -525,6 +355,7 @@ if __name__ == '__main__':
       default=[7.0],
       help='The threshold used in the mode named reg-threshold.'
   )
+  '''
   parser.add_argument(
       '--direction',
       default=False,
@@ -532,6 +363,7 @@ if __name__ == '__main__':
         for maximization.',
       action='store_true'
   )
+  '''
   parser.add_argument(
       '--out_path',
       type=str,
