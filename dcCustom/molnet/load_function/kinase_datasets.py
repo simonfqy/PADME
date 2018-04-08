@@ -21,7 +21,7 @@ from dcCustom.molnet.preset_hyper_parameters import hps
 from dcCustom.molnet.run_benchmark_models import model_regression, model_classification
 from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
-def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
+def load_kinases(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False): 
   # The last parameter means only splitting into training and validation sets.
 
@@ -30,11 +30,11 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
 
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    tasks = ['davis', 'metz', 'kiba', 'toxcast_bind']
-    file_name = "kinase_tc.csv"
+    tasks = ['davis', 'metz', 'kiba']
+    file_name = "davis_metz_kiba.csv"
   elif mode == 'classification':
-    tasks = ['davis_bin', 'metz_bin', 'kiba_bin', 'toxcast_bind_bin']
-    file_name = "kinase_tc_bin.csv"
+    tasks = ['davis_bin', 'metz_bin', 'kiba_bin']
+    file_name = "davis_metz_kiba_bin.csv"
 
   data_dir = "synthesized_data/"
   if reload:
@@ -43,11 +43,11 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
       delim = "_cold" + delim
     if cross_validation:
       delim = "_CV" + delim
-      save_dir = os.path.join(data_dir, featurizer + delim + "kinase_tc/" + mode + "/" + split)
+      save_dir = os.path.join(data_dir, featurizer + delim + "all_kinase/" + mode + "/" + split)
       loaded, all_dataset, transformers = dcCustom.utils.save.load_cv_dataset_from_disk(
           save_dir, K)
     else:
-      save_dir = os.path.join(data_dir, featurizer + delim + "kinase_tc/" + mode + "/" + split)
+      save_dir = os.path.join(data_dir, featurizer + delim + "all_kinase/" + mode + "/" + split)
       loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
           save_dir)
     if loaded:
