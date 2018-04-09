@@ -112,14 +112,13 @@ def inner_loop(i, y_true_1, y_pred_1, y_true, y_pred):
 def concordance_index(y_true, y_pred):
   total_pairs = 0
   sum_score = 0.0
-  CPU_COUNT = int(0.75*os.cpu_count())
+  CPU_COUNT = int(0.6*os.cpu_count())
 
   with Pool(processes=CPU_COUNT) as pool:
     i = 0
-    # TODO: this is unfinished.
     while i < len(y_true) - 1:
-      k = i % CPU_COUNT
-      if k == 0:
+      #k = i % CPU_COUNT
+      if i == 0:
         procs = []
         results = []
       y_true_1 = y_true[i]
@@ -127,7 +126,8 @@ def concordance_index(y_true, y_pred):
 
       procs.append(pool.apply_async(inner_loop, [i, y_true_1, y_pred_1, y_true, y_pred]))
       i += 1
-      if k == CPU_COUNT-1 or i == len(y_true) - 1:
+      #if k == CPU_COUNT-1 or i == len(y_true) - 1:
+      if i == len(y_true) - 1:
         results = [proc.get() for proc in procs]
         summ = [res[0] for res in results]
         pairs = [res[1] for res in results]
