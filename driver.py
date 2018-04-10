@@ -68,7 +68,7 @@ def run_analysis(_):
     if thresholding:
       mode = 'reg-threshold'
   direction = False
-  pdb.set_trace()
+  #pdb.set_trace()
 
   if mode == 'regression':
     metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean),
