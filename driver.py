@@ -39,6 +39,7 @@ def run_analysis(_):
   thresholding = FLAGS.thresholding
   split= FLAGS.split
   threshold = FLAGS.threshold
+  no_concord = FLAGS.no_concord
   #direction = FLAGS.direction
   out_path = FLAGS.out_path
   fold_num = FLAGS.fold_num
@@ -67,6 +68,7 @@ def run_analysis(_):
     if thresholding:
       mode = 'reg-threshold'
   direction = False
+  pdb.set_trace()
 
   if mode == 'regression':
     metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean),
@@ -192,7 +194,8 @@ def run_analysis(_):
           patience = patience,
           direction=direction,
           seed=seed,
-          model_dir=model_dir)
+          model_dir=model_dir,
+          no_concordance_index=no_concord)
     train_scores_list.append(train_score)
     valid_scores_list.append(valid_score)
     test_scores_list.append(test_score)
@@ -269,11 +272,12 @@ def run_analysis(_):
             valid_score_tasks = valid_score[model_name]['per_task_score'][i]
             
             for index, task in enumerate(tasks):
+              train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
               dataset_nm = dataset + '_' + task
               output_line = [
                       dataset_nm,
                       model_name, i, 'train',
-                      train_score_tasks[index], 'valid', valid_score_tasks[index]
+                      train_sc_tk, 'valid', valid_score_tasks[index]
               ]              
               writer.writerow(output_line)  
     else:
@@ -317,11 +321,12 @@ def run_analysis(_):
           if test:
             test_score_tasks = test_score[model_name]['per_task_score'][i]
           for index, task in enumerate(tasks):
+            train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
             dataset_nm = dataset + '_' + task
             output_line = [
                     dataset_nm,
                     model_name, i, 'train',
-                    train_score_tasks[index], 'valid', valid_score_tasks[index]
+                    train_sc_tk, 'valid', valid_score_tasks[index]
             ]
             if test:
               output_line.extend(['test', test_score_tasks[index]])            
@@ -343,6 +348,12 @@ if __name__ == '__main__':
       '--thresholding',
       default=False,
       help='If true, then it is a thresholding problem.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--no_concord',
+      default=False,
+      help='If true, then concordance index will not be computed for the training set.',
       action='store_true'
   )
   parser.add_argument(
