@@ -159,7 +159,8 @@ def run_analysis(_):
         patience=patience,
         model_dir=model_dir,
         log_file=log_file,
-        mode=mode)
+        mode=mode,
+        no_concordance_index=no_concord)
     hyper_parameters = hyper_param_opt
   
   opt_epoch = -1
@@ -217,7 +218,8 @@ def run_analysis(_):
           early_stopping = False,
           direction=direction,
           seed=seed,
-          model_dir=model_dir)
+          model_dir=model_dir,
+          no_concordance_index=no_concord)
       # TODO: I made the decision to force disable early stopping for cross validation here,
       # not quite sure whether this is right.
       train_scores_list.append(train_score)
