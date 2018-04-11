@@ -139,6 +139,7 @@ def concordance_index4(y_true, y_pred):
   raw_comparison = (y_true_diff_flat * y_pred_diff_flat + 1)/2
   scores = tf.multiply(raw_comparison, valid_pairs)
   quotient = tf.reduce_sum(scores)/tf.reduce_sum(valid_pairs)
+  #sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
   sess = tf.Session()
   quotient = sess.run(quotient)
   return quotient
@@ -146,12 +147,12 @@ def concordance_index4(y_true, y_pred):
 if __name__=="__main__":
   #prot_desc_dict = load_prot_desc_dict(prot_desc_path)
   np.random.seed(seed=43)
-  y_true = np.random.rand(80000)
-  y_pred = np.random.rand(80000)
-  y_true[3000:5000] = 2.0
-  y_pred[2000:4000] = 2.0  
+  y_true = np.random.rand(800)
+  y_pred = np.random.rand(800)
+  y_true[300:500] = 2.0
+  y_pred[200:400] = 2.0  
   time_start = time.time()
-  result = concordance_index4(y_true, y_pred)
+  result = concordance_index(y_true, y_pred)
   time_end = time.time()
   print(result)
   print("time used:", time_end-time_start)
