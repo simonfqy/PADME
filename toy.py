@@ -123,7 +123,6 @@ def concordance_index4(y_true, y_pred):
   y_true_2 = tf.expand_dims(y_true, 1)
   y_pred_1 = tf.expand_dims(y_pred, 0)
   y_pred_2 = tf.expand_dims(y_pred, 1)
-  #z = tf.reshape(tf.subtract(y_true_1, y_true_2))
   y_true_diff = tf.sign(tf.subtract(y_true_1, y_true_2))
   y_true_diff = tf.matrix_band_part(y_true_diff, 0, -1)
   y_pred_diff = tf.sign(tf.subtract(y_pred_1, y_pred_2))
@@ -147,22 +146,22 @@ def concordance_index4(y_true, y_pred):
 if __name__=="__main__":
   #prot_desc_dict = load_prot_desc_dict(prot_desc_path)
   np.random.seed(seed=43)
-  y_true = np.random.rand(10000)
-  y_pred = np.random.rand(10000)
-  y_true[300:500] = 2.0
-  y_pred[200:400] = 2.0  
+  y_true = np.random.rand(80000)
+  y_pred = np.random.rand(80000)
+  y_true[3000:5000] = 2.0
+  y_pred[2000:4000] = 2.0  
   time_start = time.time()
   result = concordance_index4(y_true, y_pred)
   time_end = time.time()
   print(result)
   print("time used:", time_end-time_start)
-  np.random.seed(seed=24)
-  y_true = np.random.rand(10000)
-  y_pred = np.random.rand(10000)
-  y_true[300:600] = 2.0
-  y_pred[0:400] = 2.0
-  time_start = time.time()
-  result = concordance_index4(y_true, y_pred)
-  time_end = time.time()
-  print(result)
-  print("time used:", time_end-time_start)
+  # np.random.seed(seed=24)
+  # y_true = np.random.rand(40000)
+  # y_pred = np.random.rand(40000)
+  # y_true[300:600] = 2.0
+  # y_pred[0:400] = 2.0
+  # time_start = time.time()
+  # result = concordance_index(y_true, y_pred)
+  # time_end = time.time()
+  # print(result)
+  # print("time used:", time_end-time_start)
