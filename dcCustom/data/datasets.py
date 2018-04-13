@@ -18,9 +18,10 @@ import tempfile
 import time
 import shutil
 import json
+import pdb
 from multiprocessing.dummy import Pool
 
-__author__ = "Bharath Ramsundar"
+__author__ = "Bharath Ramsundar, modified by Qingyuan Feng"
 __copyright__ = "Copyright 2016, Stanford University"
 __license__ = "MIT"
 
@@ -650,6 +651,7 @@ class DiskDataset(Dataset):
     sample_X = load_from_disk(
         os.path.join(self.data_dir,
                      next(self.metadata_df.iterrows())[1]['X']))
+    
     return np.shape(sample_X)[1:]
 
   def get_shard_size(self):
@@ -687,6 +689,7 @@ class DiskDataset(Dataset):
     def iterate(dataset):
       for _, row in dataset.metadata_df.iterrows():
         X = np.array(load_from_disk(os.path.join(dataset.data_dir, row['X'])))
+        #pdb.set_trace()
         ids = np.array(
             load_from_disk(os.path.join(dataset.data_dir, row['ids'])),
             dtype=object)
@@ -831,6 +834,7 @@ class DiskDataset(Dataset):
             if pad_batches:
               (X_b, y_b, w_b, ids_b) = pad_batch(shard_batch_size, X_b, y_b,
                                                  w_b, ids_b)
+            #pdb.set_trace()
 
             yield X_b, y_b, w_b, ids_b
             cur_global_batch += 1
@@ -1239,7 +1243,7 @@ class DiskDataset(Dataset):
   def get_shape(self):
     """Finds shape of dataset."""
     n_tasks = len(self.get_task_names())
-    X_shape = np.array((0,) + (0,) * len(self.get_data_shape()))
+    X_shape = np.array((0,) + (0,) * len(self.get_data_shape()))    
     ids_shape = np.array((0,))
     if n_tasks > 0:
       y_shape = np.array((0,) + (0,))
@@ -1261,6 +1265,7 @@ class DiskDataset(Dataset):
           y_shape[0] += np.array(y.shape)[0]
           w_shape[0] += np.array(w.shape)[0]
         ids_shape[0] += np.array(ids.shape)[0]
+
     return tuple(X_shape), tuple(y_shape), tuple(w_shape), tuple(ids_shape)
 
   def get_label_means(self):
