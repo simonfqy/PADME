@@ -23,7 +23,8 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 FLAGS = None
   
-def load_prot_desc_dict(prot_desc_dict, prot_desc_path):
+def load_prot_dict(prot_desc_dict, prot_seq_dict, prot_desc_path, 
+  sequence_field, phospho_field):
   df = pd.read_csv(prot_desc_path, index_col=0)
   #protList = list(df.index)  
   for row in df.itertuples():
@@ -31,7 +32,11 @@ def load_prot_desc_dict(prot_desc_dict, prot_desc_path):
     descriptor = np.array(descriptor)
     descriptor = np.reshape(descriptor, (1, len(descriptor)))
     assert row[0] not in prot_desc_dict
-    prot_desc_dict[row[0]] = descriptor    
+    prot_desc_dict[row[0]] = descriptor
+    sequence = row[sequence_field]
+    phosphorylated = row[phospho_field]
+    assert row[0] not in prot_seq_dict
+    prot_seq_dict[row[0]] = (phosphorylated, sequence)    
 
 def run_analysis(_):
   dataset=FLAGS.dataset 
@@ -52,6 +57,8 @@ def run_analysis(_):
   test = FLAGS.test
   predict_cold = FLAGS.predict_cold # Determines whether cold-start
   #drugs and targets are tested or validated.
+  cold_drug = FLAGS.cold_drug
+  cold_target = FLAGS.cold_target
   early_stopping = FLAGS.early_stopping
   evaluate_freq = FLAGS.evaluate_freq # Number of training epochs before evaluating
   # for early stopping.
@@ -59,7 +66,9 @@ def run_analysis(_):
   seed=FLAGS.seed
   log_file = FLAGS.log_file
   model_dir = FLAGS.model_dir
-  prot_desc_path=FLAGS.prot_desc_path                
+  prot_desc_path=FLAGS.prot_desc_path
+
+  assert (predict_cold + cold_drug + cold_target) <= 1                
                  
   assert model == model # Not a NAN
   searchObj = re.search('reg', model, re.I)
@@ -106,23 +115,28 @@ def run_analysis(_):
   print('-------------------------------------')
   print('Running on dataset: %s' % dataset)
   print('-------------------------------------')
+
+  prot_desc_dict = {}
+  prot_seq_dict = {}
+  for path in prot_desc_path:
+    load_prot_dict(prot_desc_dict, prot_seq_dict, path, 1, 2)
+  prot_desc_length = 8421
   
   if cross_validation:    
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
                                                   test=test, split=split, reload=reload, 
-                                                  K = fold_num, mode=mode, predict_cold=predict_cold)
+                                                  K = fold_num, mode=mode, predict_cold=predict_cold,
+                                                  cold_drug=cold_drug, cold_target=cold_target)
+                                                  #prot_seq_dict=prot_seq_dict)
   else:
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
                                                   test=test, split=split, reload=reload, mode=mode,
-                                                  predict_cold=predict_cold)
-  prot_desc_dict = {}
-  for path in prot_desc_path:
-    load_prot_desc_dict(prot_desc_dict, path)
-  prot_desc_length = 8421
-  #pdb.set_trace()
-  
+                                                  predict_cold=predict_cold, cold_drug=cold_drug, 
+                                                  cold_target=cold_target)
+    #, prot_seq_dict=prot_seq_dict)
+    
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
   # a validation dataset.
@@ -432,6 +446,18 @@ if __name__ == '__main__':
       '--predict_cold',      
       default=False,
       help='Flag of whether the split will leave "cold" entities in the test data.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--cold_drug',      
+      default=False,
+      help='Flag of whether the split will leave "cold" drugs in the test data.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--cold_target',      
+      default=False,
+      help='Flag of whether the split will leave "cold" targets in the test data.',
       action='store_true'
   )
   parser.add_argument(
