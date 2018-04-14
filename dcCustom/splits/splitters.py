@@ -56,12 +56,14 @@ class Splitter(object):
     Abstract base class for chemically aware splits..
     """
 
-  def __init__(self, verbose=False, split_cold=False, cold_drug=False, cold_target=False):
+  def __init__(self, verbose=False, split_cold=False, cold_drug=False, cold_target=False,
+    prot_seq_dict=None):
     """Creates splitter object."""
     self.verbose = verbose
     self.split_cold = split_cold
     self.cold_drug = cold_drug
     self.cold_target = cold_target
+    self.prot_seq_dict = prot_seq_dict
 
   def k_fold_split(self, dataset, k, directories=None, **kwargs):
     """
@@ -704,11 +706,12 @@ class RandomSplitter(Splitter):
       return (shuffled[:train_cutoff], shuffled[train_cutoff:valid_cutoff],
               shuffled[valid_cutoff:])
     
+    #assert self.prot_seq_dict is not None
     all_entry_id = set(range(num_datapoints))
     entries_for_training = set()
     num_training = int(num_datapoints * frac_train)
     element_id = 0
-    
+
     if self.split_cold:
       # We would need to split the dataset into cold-drugs and cold-targets.
       drug_entries = {}
@@ -717,6 +720,7 @@ class RandomSplitter(Splitter):
       for (X, _, _, _) in dataset.itersamples():
         mol = X[0]
         prot = X[1]
+        #prot = self.prot_seq_dict[prot]
         if mol not in drug_entries:
           drug_entries[mol] = set()
         if prot not in protein_entries:
@@ -767,26 +771,31 @@ class RandomSplitter(Splitter):
           entity_entries[mol].add(element_id)
         elif self.cold_target:
           prot = X[1]
+          #prot = self.prot_seq_dict[prot]
           if prot not in entity_entries:
             entity_entries[prot] = set()        
           entity_entries[prot].add(element_id)
         #pdb.set_trace()
         element_id += 1
+      pdb.set_trace()
 
-      num_entity_remain = len(entity_entries)      
+      #num_entity_remain = len(entity_entries)      
       while True:        
         entity_chosen = random.choice(list(entity_entries.keys()))
-        print("num_training: ", num_training)
-        print("len(entries_for_training): ", len(entries_for_training))
-        print("length of new elements: ", len(entity_entries[entity_chosen] - 
-          entries_for_training))      
+        
+        if len(entity_entries[entity_chosen] - entries_for_training) > 1:
+          print("num_training: ", num_training)
+          print("len(entries_for_training): ", len(entries_for_training))
+          print("length of new elements: ", len(entity_entries[entity_chosen] - 
+            entries_for_training))
+          #pdb.set_trace()     
         if len(entries_for_training.union(entity_entries[entity_chosen])) > num_training:
           new_elements = entity_entries[entity_chosen].difference(entries_for_training)
           num_to_choose = num_training - len(entries_for_training)
           new_elements = set(random.sample(new_elements, num_to_choose))
           entries_for_training = entries_for_training.union(new_elements)        
         else:
-          # Only take union of the total size is within the limit.
+          # Only take union if the total size is within the limit.
           entries_for_training = entries_for_training.union(entity_entries[entity_chosen])
           del entity_entries[entity_chosen]
           
