@@ -118,6 +118,9 @@ def concordance_index3(y_true, y_pred):
   scores = raw_comparison * valid_pairs
   return sum(scores)/sum(valid_pairs)
 
+def taking(maski, y_i):
+  return y_i[maski]
+
 def concordance_index4(y_true, y_pred):
   y_true_1 = tf.expand_dims(y_true, 0)
   y_true_2 = tf.expand_dims(y_true, 1)
@@ -131,28 +134,65 @@ def concordance_index4(y_true, y_pred):
   mask_a = tf.matrix_band_part(ones, 0, -1)
   mask_b = tf.matrix_band_part(ones, 0, 0)
   mask = tf.cast(mask_a - mask_b, dtype=tf.bool)
-  y_pred_diff_flat = tf.boolean_mask(y_pred_diff, mask)
-  y_true_diff_flat = tf.boolean_mask(y_true_diff, mask)
+  sess = tf.Session()
+  #sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+  mask = sess.run(mask)
+  y_pred_diff = sess.run(y_pred_diff)
+  y_true_diff = sess.run(y_true_diff)
+  CPU_COUNT = int(0.5*os.cpu_count())
+
+  with Pool(processes=CPU_COUNT) as pool:
+    #pdb.set_trace()
+    #procs_pred = []
+    #for i in len(mask):
+    time_start = time.time()
+    procs_pred = [pool.apply_async(taking, [maski, y_pred_diff_i]) for (maski, y_pred_diff_i) 
+      in zip(mask, y_pred_diff)]
+    results_pred = [proc.get() for proc in procs_pred]
+    time_start1 = time.time()
+    y_pred_diff_flat = np.array(list(itertools.chain.from_iterable(results_pred)))
+    time_end1 = time.time()
+    #y_pred_diff_flat = np.array(results_pred)
+    # for res in results_pred:
+    #   y_pred_diff_flat = np.append(y_pred_diff_flat, res)
+    procs_true = [pool.apply_async(taking, [maski, y_true_diff_i]) for (maski, y_true_diff_i) 
+      in zip(mask, y_true_diff)]
+    results_true = [proc.get() for proc in procs_true]
+    time_start2 = time.time()
+    y_true_diff_flat = np.array(list(itertools.chain.from_iterable(results_true)))
+    time_end2 = time.time()
+    print("time used in flatting arrays: ", time_end2+time_end1-time_start2-time_start1)
+    print("time used in CPU: ", time_end2-time_start)
+    #y_true_diff_flat = np.array(results_true)
+    # y_pred_diff_flat = np.array([])
+    # for res in results_pred:
+    #   y_pred_diff_flat = np.append(y_pred_diff_flat, res)
+  #pdb.set_trace()
+  # y_pred_diff_flat = y_pred_diff[mask]
+  # pdb.set_trace()
+  # y_true_diff_flat = tf.boolean_mask(y_true_diff, mask)
+  # y_pred_diff_flat = tf.concat(results_pred, 0)
+  # result = sess.run(y_pred_diff_flat)  
+
   valid_pairs = tf.not_equal(y_true_diff_flat, 0.0)
   valid_pairs = tf.cast(valid_pairs, dtype=tf.float64)
     
-  raw_comparison = (y_true_diff_flat * y_pred_diff_flat + 1)/2
+  raw_comparison = tf.divide(tf.add(tf.multiply(y_true_diff_flat, y_pred_diff_flat), 1), 2)
   scores = tf.multiply(raw_comparison, valid_pairs)
-  quotient = tf.reduce_sum(scores)/tf.reduce_sum(valid_pairs)
-  #sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
-  sess = tf.Session()
+  quotient = tf.reduce_sum(scores)/tf.reduce_sum(valid_pairs) 
+  
   quotient = sess.run(quotient)
   return quotient
 
 if __name__=="__main__":
   #prot_desc_dict = load_prot_desc_dict(prot_desc_path)
   np.random.seed(seed=43)
-  y_true = np.random.rand(800)
-  y_pred = np.random.rand(800)
-  y_true[300:500] = 2.0
-  y_pred[200:400] = 2.0  
+  y_true = np.random.rand(15000)
+  y_pred = np.random.rand(15000)
+  y_true[2500:4000] = 2.0
+  y_pred[2000:3300] = 2.0  
   time_start = time.time()
-  result = concordance_index(y_true, y_pred)
+  result = concordance_index4(y_true, y_pred)
   time_end = time.time()
   print(result)
   print("time used:", time_end-time_start)
