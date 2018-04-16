@@ -932,7 +932,8 @@ class GraphConvTensorGraph(TensorGraph):
       return np.concatenate(results, axis=0)
 
     
-  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False):
+  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False,
+    no_concordance_index=False):
     if not self.built:
       self.build()
     return self.evaluate_generator(
@@ -942,7 +943,8 @@ class GraphConvTensorGraph(TensorGraph):
         transformers=transformers,
         labels=self.my_labels,
         weights=[self.my_task_weights],
-        per_task_metrics=per_task_metrics)
+        per_task_metrics=per_task_metrics,
+        no_concordance_index=no_concordance_index)
   
   def bayesian_predict(self,
                        dataset,

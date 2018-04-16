@@ -17,7 +17,7 @@ from dcCustom.models.tensorgraph.layers import InputFifoQueue, Label, Feature, \
   Weights, Constant, Dense
 from deepchem.models.tensorgraph.optimizers import Adam
 from deepchem.trans import undo_transforms
-from deepchem.utils.evaluate import GeneratorEvaluator
+from dcCustom.utils.evaluate import GeneratorEvaluator
 
 
 class TensorGraph(Model):
@@ -31,7 +31,7 @@ class TensorGraph(Model):
                graph=None,
                learning_rate=0.001,
                dropout_prob = 0.5,
-               num_dense_layers = 3,
+               num_dense_layer = 3,
                dense_cmb_layer_size = 256,
                configproto=None,
                **kwargs):
@@ -72,7 +72,7 @@ class TensorGraph(Model):
         learning_rate=learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-7)
     self.dropout_prob = dropout_prob
     # TODO: the following two variables are temporary, for hyperparameter tuning purpose.
-    self.num_dense_layers = num_dense_layers
+    self.num_dense_layer = num_dense_layer
     self.dense_cmb_layer_size = dense_cmb_layer_size
     self.configproto = configproto
 
@@ -177,10 +177,13 @@ class TensorGraph(Model):
     iterations=math.ceil(nb_epoch/evaluate_freq)
     if metric is None:
       if self.mode == 'regression':
-        metric = [deepchem.metrics.Metric(deepchem.metrics.rms_score, np.mean)]
+        metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean),
+          dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean),
+          dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean)]
         direction = False
       elif self.mode == 'classification':
-        metric = [deepchem.metrics.Metric(deepchem.metrics.roc_auc_score, np.mean)]
+        metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean),
+          dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean)]
         direction = True
     
     self.temp_model_dir = self.model_dir + "/temp"
@@ -189,8 +192,6 @@ class TensorGraph(Model):
     best_score = math.inf * -1
         
     with self._get_tf("Graph").as_default():
-      #v1 = tf.get_variable("v1", shape=[3], initializer = tf.zeros_initializer)
-      
       optimal_epoch = 0
       epoch_count = 0
       for i in range(iterations):
@@ -210,17 +211,60 @@ class TensorGraph(Model):
             per_task_metrics=per_task_metrics)          
         else:
           valid_score, per_task_sc_val = self.evaluate(valid_dataset, metric,
-            transformers, per_task_metrics=per_task_metrics)
-          per_task_sc_val = per_task_sc_val[metric[0].name]          
-          if tasks is None:
-            tasks=list(range(1, len(per_task_sc_val)+1))
-          for task, task_sc in zip(tasks, per_task_sc_val):            
-            print('The score for task %s is %g' % (str(task), task_sc))
+            transformers, per_task_metrics=per_task_metrics)          
           
-        # TODO: the following line is hardcoded, which might need to be changed in the future.
-        # For now, we just assume that the first metric would be the metric that we want to optimize.
-        # In the future, we might want to have some form of combination of metrics.
-        val_sc = valid_score[metric[0].name]
+        # we use a combination of metrics.
+        if self.mode == 'regression':          
+          direction = False
+          val_sc = 0
+          per_task_sc = [0.0 for task in tasks]
+          for mtc in metric:
+            mtc_name = mtc.metric.__name__
+            composite_mtc_name = mtc.name
+            if mtc_name == 'rms_score': 
+              val_sc += valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+            if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
+              val_sc += -0.5 * valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base - 0.5 * incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+            if mtc_name == 'concordance_index':
+              val_sc += -valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base - incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+        elif self.mode == 'classification':          
+          direction = True
+          val_sc = 0
+          per_task_sc = [0.0 for task in tasks]
+          for mtc in metric:
+            mtc_name = mtc.metric.__name__
+            composite_mtc_name = mtc.name
+            if mtc_name == 'roc_auc_score': 
+              val_sc += valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+            if mtc_name == 'prc_auc_score':
+              val_sc += valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+        if per_task_metrics:
+          #per_task_sc_val = per_task_sc_val[metric[0].name]          
+          if tasks is None:
+            tasks=list(range(1, len(per_task_sc)+1))
+          for task, task_sc in zip(tasks, per_task_sc):            
+            print('The score for task %s is %g' % (str(task), task_sc))
+          print('The overall validation score is: ', val_sc)
         # Resuming the path of saving.
         self.save_file = "%s/%s" % (self.model_dir, "model")
         wait_time += 1
@@ -775,7 +819,8 @@ class TensorGraph(Model):
                          labels=None,
                          outputs=None,
                          weights=[],
-                         per_task_metrics=False):
+                         per_task_metrics=False,
+                         no_concordance_index=False):
 
     if labels is None:
       raise ValueError
@@ -791,11 +836,13 @@ class TensorGraph(Model):
         n_tasks=n_tasks,
         n_classes=n_classes)
     if not per_task_metrics:
-      scores = evaluator.compute_model_performance(metrics)
+      scores = evaluator.compute_model_performance(metrics, 
+        no_concordance_index=no_concordance_index)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
-          metrics, per_task_metrics=per_task_metrics)
+          metrics, per_task_metrics=per_task_metrics, 
+          no_concordance_index=no_concordance_index)
       return scores, per_task_scores
 
   def get_layer_variables(self, layer):

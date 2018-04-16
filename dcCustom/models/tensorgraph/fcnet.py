@@ -79,6 +79,7 @@ class MultiTaskClassifier(TensorGraph):
     self.n_tasks = n_tasks
     self.n_features = n_features
     self.n_classes = n_classes
+    self.mode = 'classification'
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
       weight_init_stddevs = [weight_init_stddevs] * n_layers
@@ -243,6 +244,7 @@ class MultiTaskRegressor(TensorGraph):
     super(MultiTaskRegressor, self).__init__(**kwargs)
     self.n_tasks = n_tasks
     self.n_features = n_features
+    self.mode = 'regression'
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
       weight_init_stddevs = [weight_init_stddevs] * (n_layers + 1)
