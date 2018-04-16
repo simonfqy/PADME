@@ -41,13 +41,14 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       model_dir="./model_dir",
       hp_invalid_list=[
           'seed', 'nb_epoch', 'penalty_type', 'dropouts', 'bypass_dropouts',
-          'n_pair_feat', 'fit_transformers', 'min_child_weight',
-          'max_delta_step', 'subsample', 'colsample_bylevel',
+          'n_pair_feat', 'fit_transformers', 'min_child_weight', 'weight_init_stddevs',
+          'max_delta_step', 'subsample', 'colsample_bylevel', 'bias_init_consts',
           'colsample_bytree', 'reg_alpha', 'reg_lambda', 'scale_pos_weight',
-          'base_score'
+          'base_score', 'layer_sizes'
       ],
       log_file='GPhypersearch.log',
-      mode='classification'):
+      mode='classification',
+      no_concordance_index=False):
     """Perform hyperparams search using a gaussian process assumption
 
     params_dict include single-valued parameters being optimized,
@@ -96,7 +97,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
 
     """
 
-    assert len(metric) == 1, 'Only use one metric'
+    #assert len(metric) == 1, 'Only use one metric'
     hyper_parameters = params_dict
     hp_list = list(hyper_parameters.keys())
     for hp in hp_invalid_list:
@@ -196,8 +197,8 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
         hyper_parameters[hp[0]] = [
             float(args[param_name[j]]) for j in range(i, i + hp[1])
         ]
-        if param_range[i][0] == 'int':
-          hyper_parameters[hp[0]] = map(int, hyper_parameters[hp[0]])
+        if param_range[i][0] == 'int':          
+          hyper_parameters[hp[0]] = list(map(int, hyper_parameters[hp[0]]))
         i = i + hp[1]
       
       opt_epoch = -1
@@ -230,7 +231,8 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
               evaluate_freq=evaluate_freq,
               patience=patience,
               direction=direction,
-              model_dir=model_dir)
+              model_dir=model_dir,
+              no_concordance_index=no_concordance_index)
         elif mode == 'regression' or mode == 'reg-threshold':          
           train_scores, valid_scores, _, opt_epoch = model_regression(
               train_dataset,
@@ -248,15 +250,35 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
               evaluate_freq=evaluate_freq,
               patience=patience,
               direction=direction,
-              model_dir=model_dir)
+              model_dir=model_dir,
+              no_concordance_index=no_concordance_index)
         else:
           raise ValueError("Invalid mode!")
-        # TODO: similar to fit() function in tensor_graph.py, we assume that the first metric
-        # is the one we want to optimize. We might consider combination in the future.
+        # similar to fit() function in tensor_graph.py, we also use combination here.
         if n_tasks > 1:
-          score = valid_scores[self.model_class]['averaged'][metric[0].name]
+          val_scores = valid_scores[self.model_class]['averaged']
         else:
-          score = valid_scores[self.model_class][metric[0].name]
+          val_scores = valid_scores[self.model_class]
+        score = 0
+        if mode == 'regression':
+          for mtc in metric:
+            mtc_name = mtc.metric.__name__
+            composite_mtc_name = mtc.name
+            if mtc_name == 'rms_score':
+              score += val_scores[composite_mtc_name]
+            if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
+              score += -0.5 * val_scores[composite_mtc_name]
+            if mtc_name == 'concordance_index':
+              score += -val_scores[composite_mtc_name]
+        elif mode == 'reg-threshold' or mode == 'classification':
+          for mtc in metric:
+            mtc_name = mtc.metric.__name__
+            composite_mtc_name = mtc.name
+            if mtc_name == 'roc_auc_score':
+              score += val_scores[composite_mtc_name]            
+            if mtc_name == 'prc_auc_score':
+              score += val_scores[composite_mtc_name]
+
       else:
         model_dir = tempfile.mkdtemp()
         model = self.model_class(hyper_parameters, model_dir)
@@ -274,6 +296,8 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       print(epoch_stmt)
       with open(log_file, 'a') as f:
         # Record performances
+        f.write(self.model_class)
+        f.write('\n')
         f.write(epoch_stmt)
         f.write('\n')
         f.write(str(score))
@@ -315,7 +339,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
           float(hp_opt[param_name[j]]) for j in range(i, i + hp[1])
       ]
       if param_range[i][0] == 'int':
-        hyper_parameters[hp[0]] = map(int, hyper_parameters[hp[0]])
+        hyper_parameters[hp[0]] = list(map(int, hyper_parameters[hp[0]]))
       i = i + hp[1]
     
     opt_epoch = -1
@@ -343,7 +367,8 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             evaluate_freq=evaluate_freq,
             patience=patience,
             direction=direction,
-            model_dir=model_dir)
+            model_dir=model_dir,
+            no_concordance_index=no_concordance_index)
       elif mode == 'regression' or mode == 'reg-threshold':
         train_scores, valid_scores, _, opt_epoch = model_regression(
             train_dataset,
@@ -361,13 +386,34 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             evaluate_freq=evaluate_freq,
             patience=patience,
             direction=direction,
-            model_dir=model_dir)
+            model_dir=model_dir,
+            no_concordance_index=no_concordance_index)
       else:
         raise ValueError("Invalid mode!")
+      
       if n_tasks > 1:
-        score = valid_scores[self.model_class]['averaged'][metric[0].name]
+        val_scores = valid_scores[self.model_class]['averaged']
       else:
-        score = valid_scores[self.model_class][metric[0].name]
+        val_scores = valid_scores[self.model_class]
+      score = 0
+      if mode == 'regression':
+        for mtc in metric:
+          mtc_name = mtc.metric.__name__
+          composite_mtc_name = mtc.name
+          if mtc_name == 'rms_score':
+            score += val_scores[composite_mtc_name]
+          if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
+            score += -0.5 * val_scores[composite_mtc_name]
+          if mtc_name == 'concordance_index':
+            score += -val_scores[composite_mtc_name]
+      elif mode == 'reg-threshold' or mode == 'classification':
+        for mtc in metric:
+          mtc_name = mtc.metric.__name__
+          composite_mtc_name = mtc.name
+          if mtc_name == 'roc_auc_score':
+            score += val_scores[composite_mtc_name]            
+          if mtc_name == 'prc_auc_score':
+            score += val_scores[composite_mtc_name]
       
       if early_stopping:
         best_score = opt_epoch[1]
