@@ -301,7 +301,8 @@ def load_cv_dataset_from_disk(save_dir, fold_num):
     fold_dir = os.path.join(save_dir, "fold" + str(i + 1))
     train_dir = os.path.join(fold_dir, "train_dir")
     valid_dir = os.path.join(fold_dir, "valid_dir")
-    assert os.path.exists(train_dir) and os.path.exists(valid_dir)
+    if not os.path.exists(train_dir) or not os.path.exists(valid_dir):
+      return False, None, list()
     train = dcCustom.data.DiskDataset(train_dir)
     valid = dcCustom.data.DiskDataset(valid_dir)
     train_data.append(train)
