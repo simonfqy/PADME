@@ -94,25 +94,22 @@ def mae_score(y_true, y_pred):
   return mean_absolute_error(y_true, y_pred)
 
 def inner_loop(i, y_true_1, y_pred_1, y_true, y_pred):
-  summ = 0.0
-  total_pairs = 0
-  for j in range(i+1, len(y_true)):
-    y_true_2 = y_true[j]      
-    if y_true_1 == y_true_2:
-      continue
-    y_pred_2 = y_pred[j]
-    total_pairs += 1
-    if y_pred_1 == y_pred_2:
-      summ += 0.5
-      continue
-    concord = np.sign(y_true_1 - y_true_2) == np.sign(y_pred_1 - y_pred_2)
-    summ += concord * 1.0
+  y_true_sublist = y_true[(i+1):len(y_true)]
+  y_pred_sublist = y_pred[(i+1):len(y_pred)]
+  valid_pairs = y_true_sublist != y_true_1
+  y_true_diff = np.sign(y_true_sublist - y_true_1)
+  y_pred_diff = np.sign(y_pred_sublist - y_pred_1)
+  
+  raw_comparison = (y_true_diff * y_pred_diff + 1)/2
+  scores = raw_comparison * valid_pairs
+  summ = sum(scores)
+  total_pairs = sum(valid_pairs)
   return summ, total_pairs
 
 def concordance_index(y_true, y_pred):
   total_pairs = 0
   sum_score = 0.0
-  CPU_COUNT = int(0.6*os.cpu_count())
+  CPU_COUNT = int(0.75*os.cpu_count())
 
   with Pool(processes=CPU_COUNT) as pool:
     i = 0
@@ -135,26 +132,7 @@ def concordance_index(y_true, y_pred):
         total_pairs += sum(pairs)
         
   return sum_score/total_pairs
-'''
-def concordance_index(y_true, y_pred):
-  total_pairs = 0
-  sum_score = 0.0
-  for i in range(len(y_true) - 1):
-    y_true_1 = y_true[i]
-    y_pred_1 = y_pred[i]
-    for j in range(i+1, len(y_true)):
-      y_true_2 = y_true[j]      
-      if y_true_1 == y_true_2:
-        continue
-      y_pred_2 = y_pred[j]
-      total_pairs += 1
-      if y_pred_1 == y_pred_2:
-        sum_score += 0.5
-        continue
-      concord = np.sign(y_true_1 - y_true_2) == np.sign(y_pred_1 - y_pred_2)
-      sum_score += concord * 1.0
-  return sum_score/total_pairs
-'''
+
 def kappa_score(y_true, y_pred):
   """Calculate Cohen's kappa for classification tasks.
 
