@@ -9,6 +9,7 @@ __author__ = "Bharath Ramsundar and Joseph Gomes, modified by Qingyuan Feng"
 __copyright__ = "Copyright 2018, Simon Fraser University"
 __license__ = "MIT"
 
+import pdb
 import sys
 import numpy as np
 import pandas as pd
@@ -25,7 +26,7 @@ from deepchem.trans import undo_transforms
 from deepchem.utils.save import load_from_disk
 from deepchem.utils.save import save_to_disk
 from deepchem.utils.save import log
-from deepchem.utils.evaluate import Evaluator
+from dcCustom.utils.evaluate import Evaluator
 # TODO: not quite sure whether the above importing statements are appropriate. May be 
 # subject to modifications.
 
@@ -174,7 +175,8 @@ class Model(BaseEstimator):
       y_pred = np.reshape(y_pred, (n_samples,))
     return y_pred
 
-  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False):
+  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False, 
+    no_concordance_index=False):
     """
     Evaluates the performance of this model on specified dataset.
 
@@ -196,11 +198,13 @@ class Model(BaseEstimator):
     """
     evaluator = Evaluator(self, dataset, transformers)
     if not per_task_metrics:
-      scores = evaluator.compute_model_performance(metrics)
+      scores = evaluator.compute_model_performance(metrics, 
+        no_concordance_index=no_concordance_index)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
-          metrics, per_task_metrics=per_task_metrics)
+          metrics, per_task_metrics=per_task_metrics, 
+          no_concordance_index=no_concordance_index)
       return scores, per_task_scores
 
   def predict_proba(self,
