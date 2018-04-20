@@ -215,10 +215,10 @@ def run_analysis(_):
     valid_scores_list.append(valid_score)
     test_scores_list.append(test_score)
   else:
-    for i in range(fold_num):
+    for h in range(fold_num):
       train_score, valid_score, _, _ = model_functions[mode](
-          all_dataset[i][0],
-          all_dataset[i][1],
+          all_dataset[h][0],
+          all_dataset[h][1],
           None,
           tasks,
           transformers,
@@ -237,7 +237,46 @@ def run_analysis(_):
       # TODO: I made the decision to force disable early stopping for cross validation here,
       # not quite sure whether this is right.
       train_scores_list.append(train_score)
-      valid_scores_list.append(valid_score) 
+      valid_scores_list.append(valid_score)
+      # The section below is a workaround for the instability of the server. I don't like
+      # it but guess there is no other choices.
+      results_file = "intermediate_cv.csv"
+      with open(os.path.join(out_path, results_file), 'a') as f:
+        writer = csv.writer(f)
+        model_name = list(train_scores_list[0].keys())[0]
+
+        train_score_dict = train_score[model_name]
+        valid_score_dict = valid_score[model_name]
+        
+        if len(tasks) > 1:
+          train_score_dict = train_score[model_name]['averaged']
+          valid_score_dict = valid_score[model_name]['averaged']          
+
+        for i in train_score_dict:
+          # i here is the metric name, like 'rms_score'.        
+          this_train_score = train_score_dict[i]
+          this_valid_score = valid_score_dict[i] 
+          output_line = [
+                dataset,
+                model_name, i, 'train',
+                this_train_score, 'valid', this_valid_score
+          ]          
+          output_line.extend(['fold_num', h])
+          writer.writerow(output_line)
+          
+          if len(tasks) > 1:
+            train_score_tasks = train_score[model_name]['per_task_score'][i]
+            valid_score_tasks = valid_score[model_name]['per_task_score'][i]
+            
+            for index, task in enumerate(tasks):
+              train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
+              dataset_nm = dataset + '_' + task
+              output_line = [
+                      dataset_nm,
+                      model_name, i, 'train',
+                      train_sc_tk, 'valid', valid_score_tasks[index]
+              ]              
+              writer.writerow(output_line)
   
   time_finish_fitting = time.time()
   
@@ -277,7 +316,8 @@ def run_analysis(_):
           output_line = [
                 dataset,
                 model_name, i, 'train',
-                this_train_score, 'valid', this_valid_score
+                this_train_score, 'valid', this_valid_score,
+                "fold_num", h
           ]          
           output_line.extend(
               ['time_for_running', time_finish_fitting - time_start_fitting])
