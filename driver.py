@@ -67,6 +67,7 @@ def run_analysis(_):
   log_file = FLAGS.log_file
   model_dir = FLAGS.model_dir
   prot_desc_path=FLAGS.prot_desc_path
+  intermediate_file = FLAGS.intermediate_file
 
   assert (predict_cold + cold_drug + cold_target) <= 1                
                  
@@ -240,8 +241,7 @@ def run_analysis(_):
       valid_scores_list.append(valid_score)
       # The section below is a workaround for the instability of the server. I don't like
       # it but guess there is no other choices.
-      results_file = "intermediate_cv.csv"
-      with open(os.path.join(out_path, results_file), 'a') as f:
+      with open(os.path.join(out_path, intermediate_file), 'a') as f:
         writer = csv.writer(f)
         model_name = list(train_scores_list[0].keys())[0]
 
@@ -280,7 +280,7 @@ def run_analysis(_):
   
   time_finish_fitting = time.time()
   
-  results_file = 'results'
+  results_file = 'results' + model
   
   if mode == 'classification':
     results_file += '_cls'
@@ -288,6 +288,10 @@ def run_analysis(_):
     results_file += '_thrhd'
   if predict_cold:
     results_file += '_cold'
+  if cold_drug:
+    results_file += '_cold_drug'
+  elif cold_target:
+    results_file += '_cold_target'
   if cross_validation:
     results_file += '_cv'
 
@@ -542,6 +546,11 @@ if __name__ == '__main__':
       #default=["davis_data/prot_desc.csv", "metz_data/prot_desc.csv"],
       help='A list containing paths to protein descriptors.'      
   )
+  parser.add_argument(
+      '--intermediate_file',
+      type=str,
+      default='intermediate_cv.csv',
+      help='File name of the csv file storing the results for separate CV folds.')
 
   FLAGS, unparsed = parser.parse_known_args()
   #pdb.set_trace()
