@@ -68,6 +68,7 @@ def run_analysis(_):
   model_dir = FLAGS.model_dir
   prot_desc_path=FLAGS.prot_desc_path
   intermediate_file = FLAGS.intermediate_file
+  plot = FLAGS.plot
 
   assert (predict_cold + cold_drug + cold_target) <= 1                
                  
@@ -175,7 +176,8 @@ def run_analysis(_):
         model_dir=model_dir,
         log_file=log_file,
         mode=mode,
-        no_concordance_index=no_concord)
+        no_concordance_index=no_concord,
+        plot=plot)
     hyper_parameters = hyper_param_opt
   
   opt_epoch = -1
@@ -211,7 +213,8 @@ def run_analysis(_):
           direction=direction,
           seed=seed,
           model_dir=model_dir,
-          no_concordance_index=no_concord)
+          no_concordance_index=no_concord,
+          plot=plot)
     train_scores_list.append(train_score)
     valid_scores_list.append(valid_score)
     test_scores_list.append(test_score)
@@ -234,7 +237,8 @@ def run_analysis(_):
           direction=direction,
           seed=seed,
           model_dir=model_dir,
-          no_concordance_index=no_concord)
+          no_concordance_index=no_concord,
+          plot=plot)
       # TODO: I made the decision to force disable early stopping for cross validation here,
       # not quite sure whether this is right.
       train_scores_list.append(train_score)
@@ -425,6 +429,12 @@ if __name__ == '__main__':
       nargs='*',
       default=[7.0],
       help='The threshold used in the mode named reg-threshold.'
+  )
+  parser.add_argument(
+      '--plot',
+      default=False,
+      help='If true, then plots will be generated.',
+      action='store_true'
   )
   '''
   parser.add_argument(
