@@ -6,6 +6,7 @@ import time
 import warnings
 import os
 from multiprocessing import Pool
+from time import gmtime, strftime
 from deepchem.utils.save import log
 from sklearn.metrics import roc_auc_score
 from sklearn.metrics import matthews_corrcoef
@@ -18,6 +19,7 @@ from sklearn.metrics import precision_score
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import auc
 from scipy.stats import pearsonr
+import matplotlib.pyplot as plt
 
 
 def to_one_hot(y, n_classes=2):
@@ -226,7 +228,13 @@ class Metric(object):
                      w=None,
                      n_classes=2,
                      filter_nans=True,
-                     per_task_metrics=False):
+                     per_task_metrics=False,
+                     plot=False,
+                     all_metrics=None,
+                     is_training_set=False,
+                     no_concordance_index=True,
+                     tasks=None,
+                     model_name=None):
     """Compute a performance metric for each task.
 
     Parameters
@@ -248,10 +256,13 @@ class Metric(object):
     -------
     A numpy nd.array containing metric values for each task.
     """
+    
     if len(y_true.shape) > 1:
       n_samples, n_tasks = y_true.shape[0], y_true.shape[1]
     else:
       n_samples, n_tasks = y_true.shape[0], 1
+    if tasks is not None:
+      assert len(tasks) == n_tasks
     if self.mode == "classification":
       y_pred = np.reshape(y_pred, (n_samples, n_tasks, n_classes))
     else:
@@ -262,6 +273,7 @@ class Metric(object):
     assert y_true.shape[0] == y_pred.shape[0] == w.shape[0]
     computed_metrics = []
     time_start = time.time()
+
     for task in range(n_tasks):
       y_task = y_true[:, task]
       if self.mode == "regression":
@@ -269,8 +281,13 @@ class Metric(object):
       else:
         y_pred_task = y_pred[:, task, :]
       w_task = w[:, task]
+      task_name = None
+      if plot and tasks is not None:
+        task_name = tasks[task]
 
-      metric_value = self.compute_singletask_metric(y_task, y_pred_task, w_task)
+      metric_value = self.compute_singletask_metric(y_task, y_pred_task, w_task, plot=plot, 
+        all_metrics=all_metrics, is_training_set=is_training_set, 
+        no_concordance_index=no_concordance_index, task_name=task_name, model_name=model_name)
       computed_metrics.append(metric_value)
     time_end = time.time()
     log("computed_metrics %s: %s" % (self.metric.__name__, str(computed_metrics)), self.verbose)
@@ -294,7 +311,8 @@ class Metric(object):
       else:
         return self.task_averager(computed_metrics), computed_metrics
 
-  def compute_singletask_metric(self, y_true, y_pred, w):
+  def compute_singletask_metric(self, y_true, y_pred, w, plot=False, all_metrics=None,
+    is_training_set=False, no_concordance_index=True, task_name=None, model_name=None):
     """Compute a metric value.
 
     Args:
@@ -307,6 +325,8 @@ class Metric(object):
     Raises:
       NotImplementedError: If metric_str is not in METRICS.
     """
+    original_y_true = y_true
+    original_y_pred = y_pred
     y_true = np.array(np.squeeze(y_true[w != 0]))
     y_pred = np.array(np.squeeze(y_pred[w != 0]))
 
@@ -344,6 +364,47 @@ class Metric(object):
       
     try:
       metric_value = self.metric(y_true, y_pred)
+      if plot:
+        metric_value_dict = {self.metric.__name__: metric_value}
+        if is_training_set and no_concordance_index:
+          # Only in this case we don't calculate CI for the plot.
+          for some_metric in all_metrics:
+            if some_metric.metric.__name__ == self.metric.__name__:
+              continue
+            if some_metric.metric.__name__ == "concordance_index":
+              continue
+            some_metric_value = some_metric.compute_singletask_metric(original_y_true, 
+              original_y_pred, w, plot=False)
+            metric_value_dict[some_metric.metric.__name__] = some_metric_value
+        else:
+          for some_metric in all_metrics:
+            if some_metric.metric.__name__ == self.metric.__name__:
+              continue            
+            some_metric_value = some_metric.compute_singletask_metric(original_y_true, 
+              original_y_pred, w, plot=False)
+            metric_value_dict[some_metric.metric.__name__] = some_metric_value
+
+        plt.plot(y_true, y_pred, 'b.')
+        y_vector = np.append(y_true, y_pred)
+        min_value = np.amin(y_vector)
+        max_value = np.amax(y_vector)        
+        plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k')
+        plt.xlabel("true value")
+        plt.ylabel("predicted value")        
+        i = 0
+        for some_metric in all_metrics:
+          if some_metric.metric.__name__ in metric_value_dict:            
+            plt.text(min_value - 1, max_value + 0.4 + 0.7*i, '\%s=%f, ' % (some_metric.metric.__name__,
+              metric_value_dict[some_metric.metric.__name__]))
+            i += 1
+        plot_time = strftime("%Y_%m_%d_%H_%M", gmtime())
+        if is_training_set:
+          task_name = task_name + "_trainset"
+        if model_name is not None:
+          task_name = model_name + task_name
+        image_name = "plots/" + task_name + plot_time + ".png"
+        plt.savefig(image_name)
+        plt.close()
     except (AssertionError, ValueError) as e:
       warnings.warn("Error calculating metric %s: %s" % (self.name, e))
       metric_value = np.nan
