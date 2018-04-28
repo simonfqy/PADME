@@ -176,7 +176,8 @@ class Model(BaseEstimator):
     return y_pred
 
   def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False, 
-    no_concordance_index=False):
+    no_concordance_index=False, plot=False, is_training_set=False, tasks=None, 
+    model_name=None):
     """
     Evaluates the performance of this model on specified dataset.
 
@@ -196,15 +197,16 @@ class Model(BaseEstimator):
     dict
       Maps tasks to scores under metric.
     """
-    evaluator = Evaluator(self, dataset, transformers)
+    evaluator = Evaluator(self, dataset, transformers, is_training_set=is_training_set, 
+      tasks=tasks, model_name=model_name)
     if not per_task_metrics:
       scores = evaluator.compute_model_performance(metrics, 
-        no_concordance_index=no_concordance_index)
+        no_concordance_index=no_concordance_index, plot=plot)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
           metrics, per_task_metrics=per_task_metrics, 
-          no_concordance_index=no_concordance_index)
+          no_concordance_index=no_concordance_index, plot=plot)
       return scores, per_task_scores
 
   def predict_proba(self,
