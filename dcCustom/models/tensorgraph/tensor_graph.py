@@ -138,6 +138,8 @@ class TensorGraph(Model):
           transformers=None,
           per_task_metrics=False,
           tasks=None,
+          verbose_search=False,
+          log_file=None
           **kwargs):
     """Train this model on a dataset.
 
@@ -173,6 +175,8 @@ class TensorGraph(Model):
     assert direction is not None
     assert checkpoint_interval > 0
     assert transformers is not None
+    if verbose_search:
+      assert log_file is not None
     
     iterations=math.ceil(nb_epoch/evaluate_freq)
     if metric is None:
@@ -264,7 +268,7 @@ class TensorGraph(Model):
             tasks=list(range(1, len(per_task_sc)+1))
           for task, task_sc in zip(tasks, per_task_sc):            
             print('The score for task %s is %g' % (str(task), task_sc))
-          print('The overall validation score is: ', val_sc)
+        print('The overall validation score is: ', val_sc)
         # Resuming the path of saving.
         self.save_file = "%s/%s" % (self.model_dir, "model")
         wait_time += 1
@@ -277,6 +281,22 @@ class TensorGraph(Model):
           wait_time = 0
           optimal_epoch = epoch_count
           saver.save(self.session, self.save_file, global_step=self.global_step)
+          if verbose_search:
+            output_val_sc = val_sc
+            if not direction:
+              output_val_sc = -1 * output_val_sc
+            with open(log_file, 'a') as f:
+              f.write("Currently at epoch number: " + str(epoch_count))
+              f.write('\n')
+              # Record performances
+              f.write("Current best validation score: " + str(output_val_sc))
+              f.write('\n')
+              if per_task_metrics:         
+                if tasks is None:
+                  tasks=list(range(1, len(per_task_sc)+1))
+                for task, task_sc in zip(tasks, per_task_sc):            
+                  f.write('The score for task %s is %g' % (str(task), task_sc))
+                  f.write('\n')
         
         if (wait_time > patience):
           break       
@@ -820,11 +840,17 @@ class TensorGraph(Model):
                          outputs=None,
                          weights=[],
                          per_task_metrics=False,
-                         no_concordance_index=False):
+                         no_concordance_index=False,
+                         plot=False,
+                         is_training_set=False,
+                         tasks=None,
+                         model_name=None):
 
     if labels is None:
       raise ValueError
     n_tasks = len(self.outputs)
+    if tasks is not None:
+      assert len(tasks) == n_tasks
     n_classes = self.outputs[0].out_tensor.get_shape()[-1].value
     evaluator = GeneratorEvaluator(
         self,
@@ -834,15 +860,18 @@ class TensorGraph(Model):
         outputs=outputs,
         weights=weights,
         n_tasks=n_tasks,
-        n_classes=n_classes)
+        n_classes=n_classes,
+        is_training_set=is_training_set,
+        tasks=tasks,
+        model_name=model_name)
     if not per_task_metrics:
       scores = evaluator.compute_model_performance(metrics, 
-        no_concordance_index=no_concordance_index)
+        no_concordance_index=no_concordance_index, plot=plot)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
-          metrics, per_task_metrics=per_task_metrics, 
-          no_concordance_index=no_concordance_index)
+        metrics, per_task_metrics=per_task_metrics, 
+        no_concordance_index=no_concordance_index, plot=plot)
       return scores, per_task_scores
 
   def get_layer_variables(self, layer):
