@@ -330,7 +330,10 @@ class MultiTaskRegressor(TensorGraph):
           prot_list = X_b[:, self.n_features]
           prot_name_list = [prot.get_name() for prot in prot_list]
           prot_desc = [self.prot_desc_dict[prot_name] for prot_name in prot_name_list]
-          feed_dict[self.features[1]] = np.squeeze(np.array(prot_desc))
+          prot_desc = np.array(prot_desc)
+          prot_desc_reshaped = prot_desc.reshape((prot_desc.shape[0], prot_desc.shape[2]))
+          #feed_dict[self.features[1]] = np.squeeze(np.array(prot_desc))
+          feed_dict[self.features[1]] = prot_desc_reshaped
         if w_b is not None and not predict:
           feed_dict[self.task_weights[0]] = w_b
         yield feed_dict
