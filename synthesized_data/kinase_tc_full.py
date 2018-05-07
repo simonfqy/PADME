@@ -25,27 +25,14 @@ def load_sequence_dict(sequence_df, sequence_field, phospho_field):
     prot_desc_dict[row[0]] = [phosphorylated, sequence]
   return prot_desc_dict
 
-'''
-dfdavis = pd.read_csv('../davis_data/Bio_results.csv', header = 2, index_col=0, usecols=range(3, 76))
-molListdavis = list(dfdavis)
-dfmetz = pd.read_csv('../metz_data/Metz_interaction.csv', header = 0, index_col=0, usecols=range(2, 10))
-molListmetz = list(dfmetz.index)
-molListmetz = [molName for molName in molListmetz if molName == molName]
-dfkiba = pd.read_csv('../KIBA_data/Smiles_bio_results.csv', header = 0, index_col=0, usecols=range(1, 8))
-molListkiba = list(dfkiba.index)
-davis_mol = set(molListdavis)
-metz_mol = set(molListmetz)
-kiba_mol = set(molListkiba)
-pdb.set_trace()
-'''
 dfm = pd.read_csv('../metz_data/restructured_unique.csv', header = 0, index_col=False)
 dfd = pd.read_csv('../davis_data/restructured.csv', header = 0, index_col=False)
 dfk = pd.read_csv('../KIBA_data/restructured_unique.csv', header = 0, index_col=False)
 dftc = pd.read_csv('../full_toxcast/restructured.csv', header = 0, index_col=False)
-# dfk = dfk.head(14000)
-# dfm = dfm.head(6000)
-# dfd = dfd.head(6000)
-# dftc = dftc.head(22000)
+dfk = dfk.head(14000)
+dfm = dfm.head(6000)
+dfd = dfd.head(6000)
+dftc = dftc.head(26000)
 #dfm = dfm.sort_values(by=['proteinName', 'smiles'])
 #dfd = dfd.sort_values(by=['proteinName', 'smiles'])
 # metz_shape = dfm.shape
@@ -77,11 +64,6 @@ for prot in intersect_proteins:
   if not kiba_sequence_dict[prot] == toxcast_sequence_dict[prot]:
     inconsistent_counter += 1
 print("inconsistent counter: ", inconsistent_counter)
-# prot_seq_dict = {}
-# load_sequence_dict(kiba_sequence_df, prot_seq_dict, 1, 2)
-# load_sequence_dict(metz_sequence_df, prot_seq_dict, 1, 2)
-# load_sequence_dict(davis_sequence_df, prot_seq_dict, 1, 2)
-# load_sequence_dict(toxcast_sequence_df, prot_seq_dict, 1, 2)
 
 dict_names = ['toxcast', 'kiba', 'metz', 'davis']
 sequence_dicts = {dict_names[0]: toxcast_sequence_dict, dict_names[1]: kiba_sequence_dict, 
@@ -199,7 +181,7 @@ for ind, dataset_nm in enumerate(dict_names):
 #counter = 0
 shuffled = np.random.permutation(range(len(kiba_value)))
 tc_task_names = ['toxcast_' + task_id for task_id in toxcast_tasks]
-with open('kinase_tc_full.csv', 'w', newline='') as csvfile:  
+with open('kinase_tc_full2.csv', 'w', newline='') as csvfile:  
   fieldnames = ['davis', 'metz', 'kiba', 'smiles', 'proteinName', 
     'protein_dataset']
   fieldnames = tc_task_names + fieldnames
