@@ -403,7 +403,7 @@ class Metric(object):
           if unequal_count <= 0:
             calculate_metric = False
             excluded_tasks_dict[task] = num_observations[task]
-            pdb.set_trace
+            
         if calculate_metric:
           metric_value = self.compute_singletask_metric(y_task, y_pred_task, w_task, 
             plot=whether_plot, all_metrics=all_metrics, is_training_set=is_training_set, 
@@ -412,6 +412,8 @@ class Metric(object):
       else:
         assert self.arithmetic_mean
         calculate_metric = False
+
+      if not calculate_metric:
         metric_value = -10000
       computed_metrics.append(metric_value)     
     
@@ -420,14 +422,15 @@ class Metric(object):
       excluded_datapoints = 0
       for task_ind in excluded_tasks_dict:
         excluded_datapoints += excluded_tasks_dict[task_ind]
-      if excluded_datapoints > 0:
-        pdb.set_trace()
-      total_datapoints = total_datapoints - excluded_datapoints
+      
+      total_datapoints -= excluded_datapoints
+      sum_coefficient = 0
       for task in range(n_tasks):
         account_for = task not in excluded_tasks_dict
         task_coefficient = n_tasks * num_observations[task] * account_for/total_datapoints
-        #coefficients.append(task_coefficient)
+        sum_coefficient += task_coefficient        
         weighted_metrics.append(task_coefficient * computed_metrics[task])
+      np.testing.assert_almost_equal(sum_coefficient, n_tasks, decimal=6)     
 
     time_end = time.time()
     
@@ -463,7 +466,7 @@ class Metric(object):
         plot_time = strftime("%Y_%m_%d_%H_%M", gmtime())
         image_name = "plots/" + meta_task_name + plot_time + ".png"
         plt.savefig(image_name)
-        plt.close()          
+        plt.close()
 
     if self.arithmetic_mean:
       # weighted_metrics = []
@@ -481,16 +484,25 @@ class Metric(object):
 
         for meta_task_name in meta_task_list:
           n_tasks_for_this_metatask = len(metatask_to_task[meta_task_name])
-          total_datapoints_for_this_metatask = aggregated_num_obs[meta_task_name]
-          #coefficients_for_this_metatask = []
+          datapoints_for_this_metatask = aggregated_num_obs[meta_task_name]          
           weighted_metrics_for_this_metatask = []
+          excluded_datapoints_for_this_metatask = 0
           for pair in metatask_to_task[meta_task_name]:
             task_ind = pair[0]
-            coef = n_tasks_for_this_metatask * num_observations[task_ind]/total_datapoints_for_this_metatask
-            #coefficients_for_this_metatask.append(coef)
+            if task_ind in excluded_tasks_dict:
+              excluded_datapoints_for_this_metatask += excluded_tasks_dict[task_ind]
+
+          datapoints_for_this_metatask -= excluded_datapoints_for_this_metatask
+          sum_coef = 0
+          for pair in metatask_to_task[meta_task_name]:
+            task_ind = pair[0]
+            account_for = task_ind not in excluded_tasks_dict
+            coef = n_tasks_for_this_metatask * num_observations[task_ind]*account_for/datapoints_for_this_metatask            
+            sum_coef += coef
             weighted_metrics_for_this_metatask.append(coef * computed_metrics[task_ind])
           weighted_average = np.mean(weighted_metrics_for_this_metatask)
-          aggregated_metrics.append(weighted_average)
+          aggregated_metrics.append(weighted_average)          
+          np.testing.assert_almost_equal(sum_coef, n_tasks_for_this_metatask, decimal=6)
 
     else:
       weighted_metrics = copy.deepcopy(computed_metrics)
