@@ -21,6 +21,7 @@ def load_sequence_dict(sequence_df, sequence_field, phospho_field):
   for row in sequence_df.itertuples():
     sequence = row[sequence_field]
     phosphorylated = row[phospho_field]
+    assert row[0] not in prot_desc_dict
     prot_desc_dict[row[0]] = [phosphorylated, sequence]
   return prot_desc_dict
 
@@ -40,9 +41,11 @@ pdb.set_trace()
 dfm = pd.read_csv('../metz_data/restructured_unique.csv', header = 0, index_col=False)
 dfd = pd.read_csv('../davis_data/restructured.csv', header = 0, index_col=False)
 dfk = pd.read_csv('../KIBA_data/restructured_unique.csv', header = 0, index_col=False)
-dfk = dfk.head(30000)
-dfm = dfm.head(12000)
-dfd = dfd.head(12000)
+dftcb = pd.read_csv('../toxcast_data/restructured.csv', header = 0, index_col=False)
+# dfk = dfk.head(20000)
+# dfm = dfm.head(6000)
+# dfd = dfd.head(6000)
+# dftcb = dftcb.head(13000)
 #dfm = dfm.sort_values(by=['proteinName', 'smiles'])
 #dfd = dfd.sort_values(by=['proteinName', 'smiles'])
 kiba_sequence_df = pd.read_csv('../KIBA_data/prot_desc.csv', header=0, 
@@ -51,34 +54,44 @@ metz_sequence_df = pd.read_csv('../metz_data/prot_desc_Metz.csv', header=0,
   index_col=0, usecols=range(0, 6))
 davis_sequence_df = pd.read_csv('../davis_data/prot_desc.csv', header=0, 
   index_col=0, usecols=range(0, 3))
+toxcast_sequence_df = pd.read_csv('../toxcast_data/binding_prot_desc.csv', header=0, 
+  index_col=0, usecols=range(0, 3))
 time_start = time.time()
 kiba_sequence_dict = load_sequence_dict(kiba_sequence_df, 1, 2)
 metz_sequence_dict = load_sequence_dict(metz_sequence_df, 4, 5)
 davis_sequence_dict = load_sequence_dict(davis_sequence_df, 1, 2)
+toxcast_sequence_dict = load_sequence_dict(toxcast_sequence_df, 1, 2)
+# prot_seq_dict = {}
+# load_sequence_dict(kiba_sequence_df, prot_seq_dict, 1, 2)
+# load_sequence_dict(metz_sequence_df, prot_seq_dict, 1, 2)
+# load_sequence_dict(davis_sequence_df, prot_seq_dict, 1, 2)
+# load_sequence_dict(toxcast_sequence_df, prot_seq_dict, 1, 2)
 
-dict_names = ['kiba', 'metz', 'davis']
+dict_names = ['kiba', 'metz', 'davis', 'toxcast_bind']
 sequence_dicts = {dict_names[0]: kiba_sequence_dict, dict_names[1]: metz_sequence_dict, 
-  dict_names[2]: davis_sequence_dict}
-df_dicts = {dict_names[0]: dfk, dict_names[1]: dfm, dict_names[2]: dfd}
+  dict_names[2]: davis_sequence_dict, dict_names[3]: toxcast_sequence_dict}
+df_dicts = {dict_names[0]: dfk, dict_names[1]: dfm, dict_names[2]: dfd, dict_names[3]: dftcb}
 #pdb.set_trace()
 
 invalid_val = np.nan
 davis_value = []
 metz_value = []
 kiba_value = []
+toxcast_bind_value = []
 dict_values = {dict_names[0]: kiba_value, dict_names[1]: metz_value, 
-  dict_names[2]: davis_value}
+  dict_names[2]: davis_value, dict_names[3]: toxcast_bind_value}
 protein_name = []
 protein_origin = []
 cmpd_smiles = []
 kiba_leftout = [True]*len(dfk)
 davis_leftout = [True]*len(dfd)
 metz_leftout = [True]*len(dfm)
+toxcast_bind_leftout = [True]*len(dftcb)
 dict_leftout = {dict_names[0]: kiba_leftout, dict_names[1]: metz_leftout, 
-  dict_names[2]: davis_leftout}
-prot_correspondence_dict = {dict_names[1]: {}, dict_names[2]: {}}
-cmpd_correspondence_dict = {dict_names[1]: {}, dict_names[2]: {}}
-remaining_entries = {dict_names[0]: [], dict_names[1]: [], dict_names[2]: []}
+  dict_names[2]: davis_leftout, dict_names[3]: toxcast_bind_leftout}
+prot_correspondence_dict = {dict_names[1]: {}, dict_names[2]: {}, dict_names[3]: {}}
+cmpd_correspondence_dict = {dict_names[1]: {}, dict_names[2]: {}, dict_names[3]: {}}
+remaining_entries = {dict_names[0]: [], dict_names[1]: [], dict_names[2]: [], dict_names[3]: []}
 
 for ind, dataset_nm in enumerate(dict_names):
   remaining_entries[dataset_nm] = np.where(dict_leftout[dataset_nm])[0]
@@ -161,10 +174,11 @@ for ind, dataset_nm in enumerate(dict_names):
 # metz_value = np.array(metz_value)
 # davis_value = np.array(davis_value)
 #interaction_bin = (interactions >= 7.6) * 1
-
+counter = 0
 shuffled = np.random.permutation(range(len(kiba_value)))
-with open('davis_metz_kiba2.csv', 'w', newline='') as csvfile:
-  fieldnames = ['davis', 'metz', 'kiba', 'smiles', 'proteinName', 'protein_dataset']
+with open('kinase_tc.csv', 'w', newline='') as csvfile:
+  fieldnames = ['davis', 'metz', 'kiba', 'toxcast_bind','smiles', 'proteinName', 
+    'protein_dataset']
   writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
   writer.writeheader()
   for i in range(len(kiba_value)):    
@@ -174,13 +188,20 @@ with open('davis_metz_kiba2.csv', 'w', newline='') as csvfile:
     #index = i
     davis_val = davis_value[index]    
     metz_val = metz_value[index]      
-    kiba_val = kiba_value[index] 
+    kiba_val = kiba_value[index]
+    toxcast_bind_val = toxcast_bind_value[index]
+    if toxcast_bind_val == toxcast_bind_val:
+      if davis_val == davis_val or metz_val == metz_val or kiba_val == kiba_val:
+        counter += 1
+    toxcast_bind_val = '' if toxcast_bind_val != toxcast_bind_val else toxcast_bind_val
+
     davis_val = '' if davis_val != davis_val else davis_val    
     metz_val = '' if metz_val != metz_val else metz_val    
     kiba_val = '' if kiba_val != kiba_val else kiba_val
     writer.writerow({'davis': davis_val, 'metz': metz_val, 'kiba': kiba_val,
-      'smiles': cmpd_smiles[index], 'proteinName': protein_name[index],
-      'protein_dataset': protein_origin[index]})
+      'toxcast_bind': toxcast_bind_val, 'smiles': cmpd_smiles[index], 
+      'proteinName': protein_name[index], 'protein_dataset': protein_origin[index]})
 
 time_finish = time.time()
 print("time used: ", time_finish - time_start)
+print("counter: ", counter)
