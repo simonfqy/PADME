@@ -14,17 +14,24 @@ class Protein(object):
   ProtFeaturizer.featurize() function, the descriptors can 
   be fetched using those names from the corresponding file."""
   
-  def __init__(self, name):
+  def __init__(self, name, source, sequence):
     self.name = name
+    self.source = source
+    self.sequence = sequence
     
   def __eq__(self, other):
     if isinstance(self, other.__class__):
-      return self.name == other.name
+      return (self.sequence == other.sequence)
     return False
     
   def __hash__(self):
-    return hash(self.name)
+    assert self.sequence is not None
+    return hash(self.sequence)
+
     
   def get_name(self):
-    return self.name
+    return (self.source, self.name)
+
+  def get_sequence(self):
+    return self.sequence
 

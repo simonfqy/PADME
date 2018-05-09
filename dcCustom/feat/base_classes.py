@@ -2,6 +2,7 @@
 Feature calculations.
 """
 import types
+import pdb
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import rdGeometry, rdMolTransforms
@@ -76,7 +77,7 @@ class Featurizer(object):
         features.append(self._featurize(mol, smiles=smiles))
       else:
         features.append(np.array([]))
-
+    
     features = np.asarray(features)
     return features
 

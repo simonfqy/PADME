@@ -15,3 +15,4 @@ from dcCustom.feat.proteins import Protein
 from dcCustom.feat.graph_features import WeaveFeaturizer
 from dcCustom.feat.graph_features import ConvMolFeaturizer
 from dcCustom.feat.fingerprints import CircularFingerprint
+from dcCustom.feat.fingerprints import ComparableFingerprint
