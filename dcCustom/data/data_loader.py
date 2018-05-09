@@ -55,13 +55,17 @@ def convert_df_to_numpy(df, tasks, verbose=False):
 
   return y.astype(float), w.astype(float)
   
-def featurize_protein(df, field, log_every_N=500, verbose=True):
+def featurize_protein(df, field, source_field, prot_seq_dict, log_every_N=500, verbose=True):
   '''This is supposed to match the format of functions for featurizing molecules.
   It is not really featurizing, but only constructs the protein objects from their names.'''
   elems = df[field].tolist()
+  sources = df[source_field].tolist()
   proteins = []
   for ind, prot in enumerate(elems):
-    proteins.append([Protein(prot)])  
+    source = sources[ind]
+    pair = (source, prot)
+    sequence = prot_seq_dict[pair]
+    proteins.append([Protein(prot, source = source, sequence = sequence)])  
   #return np.squeeze(np.array(proteins), axis=1), valid_inds
   return np.array(proteins)
  
@@ -85,7 +89,8 @@ def featurize_smiles_df(df, featurizer, field, log_every_N=1000, verbose=True):
       mol = rdmolops.RenumberAtoms(mol, new_order)
     if ind % log_every_N == 0:
       log("Featurizing sample %d" % ind, verbose)
-    features.append(featurizer.featurize([mol]))
+    features.append(featurizer.featurize([mol], smiles=elem))
+  
   valid_inds = np.array(
       [1 if elt.size > 0 else 0 for elt in features], dtype=bool)
   features = [elt for (is_valid, elt) in zip(valid_inds, features) if is_valid]
@@ -181,8 +186,9 @@ class DataLoader(object):
                mol_field=None,
                featurizer=None,
                protein_field=None,
-               
+               source_field=None,               
                verbose=True,
+               prot_seq_dict=None,
                log_every_n=1000):
     """Extracts data from input as Pandas data frame"""
     if not isinstance(tasks, list):
@@ -196,6 +202,8 @@ class DataLoader(object):
       self.id_field = id_field
     self.mol_field = mol_field
     self.protein_field = protein_field
+    self.source_field = source_field
+    self.prot_seq_dict = prot_seq_dict
     self.user_specified_features = None
     if isinstance(featurizer, UserDefinedFeaturizer):
       self.user_specified_features = featurizer.feature_fields
@@ -271,8 +279,10 @@ class CSVLoader(DataLoader):
   def featurize_shard(self, shard):
     """Featurizes a shard of an input dataframe."""
     mol_features, valid_inds = featurize_smiles_df(shard, self.featurizer, field=self.smiles_field)
-    mol_features = np.squeeze(mol_features)
-    proteins = featurize_protein(shard, field=self.protein_field)
+    if len(mol_features.shape) > 2:
+      mol_features = np.squeeze(mol_features)
+    proteins = featurize_protein(shard, field=self.protein_field, source_field=self.source_field,
+      prot_seq_dict=self.prot_seq_dict)
     # Note: for ECFP with 1024 entries, mol_features is a (8192, 1024) sized array.    
     return np.concatenate((mol_features, proteins), axis=1), valid_inds
 
