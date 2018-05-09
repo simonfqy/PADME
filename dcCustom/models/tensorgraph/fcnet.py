@@ -21,6 +21,7 @@ from deepchem.models.tensorflow_models import TensorflowGraphModel
 from deepchem.models.tensorflow_models import TensorflowClassifier
 from deepchem.models.tensorflow_models import TensorflowRegressor
 
+from dcCustom.feat.fingerprints import ComparableFingerprint
 from dcCustom.models.tensorgraph.tensor_graph import TensorGraph, TFWrapper
 from dcCustom.models.tensorgraph.layers import Feature, Label, Weights, WeightedError, \
   Dense, Dropout, WeightDecay, Reshape, SoftMaxCrossEntropy, L2Loss, ReduceSum, Concat, \
@@ -326,8 +327,11 @@ class MultiTaskRegressor(TensorGraph):
         if y_b is not None and not predict:
           feed_dict[self.labels[0]] = y_b.reshape(-1, self.n_tasks, 1)
         if X_b is not None:
-          feed_dict[self.features[0]] = X_b[:, :self.n_features]
-          prot_list = X_b[:, self.n_features]
+          mol_list = X_b[:, 0]
+          mol_array = np.array([mol.get_array() for mol in mol_list])
+          feed_dict[self.features[0]] = mol_array
+          #pdb.set_trace()
+          prot_list = X_b[:, 1]
           prot_name_list = [prot.get_name() for prot in prot_list]
           prot_desc = [self.prot_desc_dict[prot_name] for prot_name in prot_name_list]
           prot_desc = np.array(prot_desc)

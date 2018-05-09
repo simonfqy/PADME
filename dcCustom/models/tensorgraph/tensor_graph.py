@@ -139,7 +139,9 @@ class TensorGraph(Model):
           per_task_metrics=False,
           tasks=None,
           verbose_search=False,
-          log_file=None
+          log_file=None,
+          aggregated_tasks=[],
+          model_name=None,
           **kwargs):
     """Train this model on a dataset.
 
@@ -181,13 +183,17 @@ class TensorGraph(Model):
     iterations=math.ceil(nb_epoch/evaluate_freq)
     if metric is None:
       if self.mode == 'regression':
-        metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean),
-          dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean),
-          dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean)]
+        metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean,
+          arithmetic_mean=True),
+          dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean,
+          arithmetic_mean=True),
+          dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean, arithmetic_mean=True)]
         direction = False
       elif self.mode == 'classification':
-        metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean),
-          dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean)]
+        metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean,
+          arithmetic_mean=True),
+          dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean,
+          arithmetic_mean=True)]
         direction = True
     
     self.temp_model_dir = self.model_dir + "/temp"
@@ -212,16 +218,18 @@ class TensorGraph(Model):
               max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
         if not per_task_metrics:
           valid_score = self.evaluate(valid_dataset, metric, transformers, 
-            per_task_metrics=per_task_metrics)          
+            per_task_metrics=per_task_metrics, tasks=tasks, model_name=model_name) 
+            
         else:
           valid_score, per_task_sc_val = self.evaluate(valid_dataset, metric,
-            transformers, per_task_metrics=per_task_metrics)          
-          
+            transformers, per_task_metrics=per_task_metrics, tasks=tasks, 
+            model_name=model_name)
+
+        val_sc = 0
+        per_task_sc = [0.0 for task in aggregated_tasks]  
         # we use a combination of metrics.
         if self.mode == 'regression':          
           direction = False
-          val_sc = 0
-          per_task_sc = [0.0 for task in tasks]
           for mtc in metric:
             mtc_name = mtc.metric.__name__
             composite_mtc_name = mtc.name
@@ -245,8 +253,6 @@ class TensorGraph(Model):
 
         elif self.mode == 'classification':          
           direction = True
-          val_sc = 0
-          per_task_sc = [0.0 for task in tasks]
           for mtc in metric:
             mtc_name = mtc.metric.__name__
             composite_mtc_name = mtc.name
@@ -266,7 +272,7 @@ class TensorGraph(Model):
           #per_task_sc_val = per_task_sc_val[metric[0].name]          
           if tasks is None:
             tasks=list(range(1, len(per_task_sc)+1))
-          for task, task_sc in zip(tasks, per_task_sc):            
+          for task, task_sc in zip(aggregated_tasks, per_task_sc):            
             print('The score for task %s is %g' % (str(task), task_sc))
         print('The overall validation score is: ', val_sc)
         # Resuming the path of saving.
@@ -294,9 +300,9 @@ class TensorGraph(Model):
               if per_task_metrics:         
                 if tasks is None:
                   tasks=list(range(1, len(per_task_sc)+1))
-                for task, task_sc in zip(tasks, per_task_sc):            
-                  f.write('The score for task %s is %g' % (str(task), task_sc))
-                  f.write('\n')
+                for task, task_sc in zip(aggregated_tasks, per_task_sc):            
+                  f.write('The score for task %s is %g;' % (str(task), task_sc))
+                f.write('\n')
         
         if (wait_time > patience):
           break       
@@ -836,6 +842,7 @@ class TensorGraph(Model):
                          feed_dict_generator,
                          metrics,
                          transformers=[],
+                         dataset=None,
                          labels=None,
                          outputs=None,
                          weights=[],
@@ -856,6 +863,7 @@ class TensorGraph(Model):
         self,
         feed_dict_generator,
         transformers,
+        dataset=dataset,
         labels=labels,
         outputs=outputs,
         weights=weights,

@@ -931,20 +931,26 @@ class GraphConvTensorGraph(TensorGraph):
         results.append(result[:n_samples])
       return np.concatenate(results, axis=0)
 
-    
+  # TODO: need to change this function to allow plotting.
   def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False,
-    no_concordance_index=False):
+    no_concordance_index=False, plot=False, is_training_set=False, tasks=None, 
+    model_name=None):
     if not self.built:
       self.build()
     return self.evaluate_generator(
         self.default_generator(dataset, predict=True),
         metrics,
-        # TODO: I added the following line, need to see whether it functions as expected.
+        # I added the following two lines.
+        dataset=dataset,
         transformers=transformers,
         labels=self.my_labels,
         weights=[self.my_task_weights],
         per_task_metrics=per_task_metrics,
-        no_concordance_index=no_concordance_index)
+        no_concordance_index=no_concordance_index,
+        plot=plot,
+        is_training_set=is_training_set,
+        tasks=tasks,
+        model_name=model_name)
   
   def bayesian_predict(self,
                        dataset,
