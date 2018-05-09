@@ -22,7 +22,8 @@ from dcCustom.molnet.run_benchmark_models import model_regression, model_classif
 from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
-  reload=True, K = 5, mode = 'regression', predict_cold = False): 
+  reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False, 
+  cold_target=False, prot_seq_dict=None): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -41,6 +42,10 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
     delim = "/"
     if predict_cold:
       delim = "_cold" + delim
+    elif cold_drug:
+      delim = "_cold_drug" + delim
+    elif cold_target:
+      delim = "_cold_target" + delim
     if cross_validation:
       delim = "_CV" + delim
       save_dir = os.path.join(data_dir, featurizer + delim + "kinase_tc/" + mode + "/" + split)
@@ -57,14 +62,14 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
   if featurizer == 'Weave':
     featurizer = dcCustom.feat.WeaveFeaturizer()
   elif featurizer == 'ECFP':
-    featurizer = deepchem.feat.CircularFingerprint(size=1024)
+    featurizer = dcCustom.feat.CircularFingerprint(size=1024)
   elif featurizer == 'GraphConv':
     featurizer = dcCustom.feat.ConvMolFeaturizer()
   
   loader = dcCustom.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
       featurizer=featurizer)
-  dataset = loader.featurize(dataset_file, shard_size=8192)
+  dataset = loader.featurize(dataset_file, shard_size=8196)
   
   if mode == 'regression':
     transformers = [
@@ -82,7 +87,8 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
     
   splitters = {
       'index': deepchem.splits.IndexSplitter(),
-      'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold),
+      'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold, cold_drug=cold_drug, 
+        cold_target=cold_target, prot_seq_dict=prot_seq_dict),
       'scaffold': deepchem.splits.ScaffoldSplitter(),
       'butina': deepchem.splits.ButinaSplitter(),
       'task': deepchem.splits.TaskSplitter()
