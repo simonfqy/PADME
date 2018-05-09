@@ -26,7 +26,7 @@ from rdkit.ML.Cluster import Butina
 from rdkit.Chem.Fingerprints import FingerprintMols
 from rdkit.SimDivFilters.rdSimDivPickers import MaxMinPicker
 import deepchem as dc
-from deepchem.data import DiskDataset
+from dcCustom.data import DiskDataset
 from deepchem.utils import ScaffoldGenerator
 from deepchem.utils.save import log
 from deepchem.data import NumpyDataset
@@ -721,6 +721,7 @@ class RandomSplitter(Splitter):
         mol = X[0]
         prot = X[1]
         #prot = self.prot_seq_dict[prot]
+        prot = prot.get_sequence()
         if mol not in drug_entries:
           drug_entries[mol] = set()
         if prot not in protein_entries:
@@ -772,23 +773,26 @@ class RandomSplitter(Splitter):
         elif self.cold_target:
           prot = X[1]
           #prot = self.prot_seq_dict[prot]
+          prot = prot.get_sequence()
           if prot not in entity_entries:
             entity_entries[prot] = set()        
           entity_entries[prot].add(element_id)
         #pdb.set_trace()
         element_id += 1
-      pdb.set_trace()
+      #pdb.set_trace()
+      print("element_id: ", element_id)
+      print("len(entity_entries): ", len(entity_entries))
 
       #num_entity_remain = len(entity_entries)      
       while True:        
         entity_chosen = random.choice(list(entity_entries.keys()))
         
-        if len(entity_entries[entity_chosen] - entries_for_training) > 1:
+        if num_training - len(entries_for_training) < 20:
           print("num_training: ", num_training)
           print("len(entries_for_training): ", len(entries_for_training))
           print("length of new elements: ", len(entity_entries[entity_chosen] - 
             entries_for_training))
-          #pdb.set_trace()     
+          #pdb.set_trace()               
         if len(entries_for_training.union(entity_entries[entity_chosen])) > num_training:
           new_elements = entity_entries[entity_chosen].difference(entries_for_training)
           num_to_choose = num_training - len(entries_for_training)
