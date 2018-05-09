@@ -138,7 +138,8 @@ class Evaluator(object):
             # No longer need to plot. Could be wasting time calculating metrics again, but they
             # are super fast so it is no big deal.
             multitask_scores[metric.name], computed_metrics = metric.compute_metric(
-                y, y_pred, w, per_task_metrics=True, plot=False)
+                y, y_pred, w, per_task_metrics=True, plot=False, 
+                is_training_set=self.is_training_set, tasks=self.tasks, model_name=self.model_name)
             all_task_scores[metric.name] = computed_metrics
 
         # Now deal with validation or test sets.
@@ -151,7 +152,8 @@ class Evaluator(object):
           plot_finished = True
         else: # Otherwise don't need to plot.
           multitask_scores[metric.name], computed_metrics = metric.compute_metric(
-              y, y_pred, w, per_task_metrics=True, plot=False)
+              y, y_pred, w, per_task_metrics=True, plot=False, is_training_set=self.is_training_set, 
+              tasks=self.tasks, model_name=self.model_name)
           all_task_scores[metric.name] = computed_metrics
 
       else:        
@@ -167,7 +169,8 @@ class Evaluator(object):
             plot_finished = True
           else:            
             multitask_scores[metric.name] = metric.compute_metric(
-                y, y_pred, w, per_task_metrics=False, plot=False)
+                y, y_pred, w, per_task_metrics=False, plot=False,
+                is_training_set=self.is_training_set, tasks=self.tasks, model_name=self.model_name)
             
         elif plot and (i == len(metrics)-1 or metric.metric.__name__ =="concordance_index") and (
           not plot_finished):                  
@@ -177,7 +180,8 @@ class Evaluator(object):
           plot_finished = True
         else:
           multitask_scores[metric.name] = metric.compute_metric(
-              y, y_pred, w, per_task_metrics=False, plot=False)
+              y, y_pred, w, per_task_metrics=False, plot=False,
+              is_training_set=self.is_training_set, tasks=self.tasks, model_name=self.model_name)
 
     if stats_out is not None:
       log("Saving stats to %s" % stats_out, self.verbose)
@@ -201,6 +205,7 @@ class GeneratorEvaluator(object):
                generator,
                transformers,
                labels,
+               dataset=None,
                outputs=None,
                n_tasks=1,
                n_classes=2,
@@ -230,6 +235,8 @@ class GeneratorEvaluator(object):
     self.generator = generator
     self.n_tasks = n_tasks
     self.n_classes = n_classes
+    # I added the dataset here to implement output_predictions() function easier.
+    self.dataset = dataset
     self.output_transformers = [
         transformer for transformer in transformers if transformer.transform_y
     ]
@@ -245,7 +252,26 @@ class GeneratorEvaluator(object):
     if len(self.label_keys) != len(self.output_keys):
       raise ValueError("Must have same number of labels and outputs")
 
-  def compute_model_performance(self, metrics, per_task_metrics=False,
+  # TODO: the following function needs revision to work properly.
+  def output_predictions(self, y_preds, csv_out):
+    """
+    Writes predictions to file.
+
+    Args:
+      y_preds: np.ndarray
+      csvfile: Open file object.
+    """
+    mol_ids = self.dataset.ids
+    y_preds = np.reshape(y_preds, (len(y_preds), self.n_tasks))
+    assert len(y_preds) == len(mol_ids)
+    with open(csv_out, "w") as csvfile:
+      csvwriter = csv.writer(csvfile)
+      csvwriter.writerow(["Compound"] + self.dataset.get_task_names())
+      for mol_id, y_pred in zip(mol_ids, y_preds):
+        csvwriter.writerow([mol_id] + list(y_pred))
+
+  def compute_model_performance(self, metrics, csv_out=None, stats_out=None, 
+                                per_task_metrics=False,
                                 no_concordance_index=False, plot=False):
     """
     Computes statistics of model on test data and saves results to csv.
@@ -296,6 +322,10 @@ class GeneratorEvaluator(object):
       w = np.array(w)
       w = np.reshape(w, newshape=y.shape)
 
+    if csv_out is not None:
+      log("Saving predictions to %s" % csv_out, self.verbose)
+      self.output_predictions(y_pred, csv_out)
+
     plot_finished = False
     # Compute multitask metrics
     for i, metric in enumerate(metrics):
@@ -315,7 +345,8 @@ class GeneratorEvaluator(object):
             plot_finished = True
           else:
             multitask_scores[metric.name], computed_metrics = metric.compute_metric(
-              y, y_pred, w, per_task_metrics=True, n_classes=self.n_classes, plot=False)
+              y, y_pred, w, per_task_metrics=True, n_classes=self.n_classes, plot=False,
+              is_training_set=self.is_training_set, tasks=self.tasks, model_name=self.model_name)
             all_task_scores[metric.name] = computed_metrics
 
         elif plot and (i == len(metrics)-1 or metric.metric.__name__ =="concordance_index") and (
@@ -329,7 +360,8 @@ class GeneratorEvaluator(object):
 
         else: #Otherwise don't need to plot.
           multitask_scores[metric.name], computed_metrics = metric.compute_metric(
-            y, y_pred, w, per_task_metrics=True, n_classes=self.n_classes, plot=False)
+            y, y_pred, w, per_task_metrics=True, n_classes=self.n_classes, plot=False, 
+            is_training_set=self.is_training_set, tasks=self.tasks, model_name=self.model_name)
           all_task_scores[metric.name] = computed_metrics
 
       else:
@@ -346,7 +378,8 @@ class GeneratorEvaluator(object):
             plot_finished = True
           else:
             multitask_scores[metric.name] = metric.compute_metric(
-              y, y_pred, w, per_task_metrics=False, n_classes=self.n_classes, plot=False)
+              y, y_pred, w, per_task_metrics=False, n_classes=self.n_classes, plot=False,
+              is_training_set=self.is_training_set, tasks=self.tasks, model_name=self.model_name)
 
         elif plot and (i == len(metrics)-1 or metric.metric.__name__ =="concordance_index") and (
           not plot_finished):                  
@@ -358,7 +391,8 @@ class GeneratorEvaluator(object):
 
         else: #Otherwise don't need to plot.
           multitask_scores[metric.name]= metric.compute_metric(
-            y, y_pred, w, per_task_metrics=False, n_classes=self.n_classes, plot=False)          
+            y, y_pred, w, per_task_metrics=False, n_classes=self.n_classes, plot=False,
+            is_training_set=self.is_training_set, tasks=self.tasks, model_name=self.model_name)          
 
     if not per_task_metrics:
       return multitask_scores
