@@ -14,6 +14,7 @@ import pwd
 import pdb
 import csv
 import re
+import copy
 import deepchem
 import pickle
 import dcCustom
@@ -25,18 +26,28 @@ FLAGS = None
   
 def load_prot_dict(prot_desc_dict, prot_seq_dict, prot_desc_path, 
   sequence_field, phospho_field):
+  if re.search('davis', prot_desc_path, re.I):
+    source = 'davis'
+  elif re.search('metz', prot_desc_path, re.I):
+    source = 'metz'
+  elif re.search('kiba', prot_desc_path, re.I):
+    source = 'kiba'
+  elif re.search('toxcast', prot_desc_path, re.I):
+    source = 'toxcast'
+
   df = pd.read_csv(prot_desc_path, index_col=0)
   #protList = list(df.index)  
   for row in df.itertuples():
     descriptor = row[2:]
     descriptor = np.array(descriptor)
     descriptor = np.reshape(descriptor, (1, len(descriptor)))
-    assert row[0] not in prot_desc_dict
-    prot_desc_dict[row[0]] = descriptor
+    pair = (source, row[0])
+    assert pair not in prot_desc_dict
+    prot_desc_dict[pair] = descriptor
     sequence = row[sequence_field]
     phosphorylated = row[phospho_field]
-    assert row[0] not in prot_seq_dict
-    prot_seq_dict[row[0]] = (phosphorylated, sequence)    
+    assert pair not in prot_seq_dict
+    prot_seq_dict[pair] = (phosphorylated, sequence)    
 
 def run_analysis(_):
   dataset=FLAGS.dataset 
@@ -50,9 +61,11 @@ def run_analysis(_):
   fold_num = FLAGS.fold_num
   hyper_parameters=FLAGS.hyper_parameters
   hyper_param_search = FLAGS.hyper_param_search
+  verbose_search = FLAGS.verbose_search
+  arithmetic_mean = FLAGS.arithmetic_mean
   max_iter = FLAGS.max_iter
   search_range = FLAGS.search_range
-  reload = FLAGS.reload
+  isreload = FLAGS.reload
   cross_validation = FLAGS.cross_validation
   test = FLAGS.test
   predict_cold = FLAGS.predict_cold # Determines whether cold-start
@@ -69,6 +82,7 @@ def run_analysis(_):
   prot_desc_path=FLAGS.prot_desc_path
   intermediate_file = FLAGS.intermediate_file
   plot = FLAGS.plot
+  aggregate = FLAGS.aggregate
 
   assert (predict_cold + cold_drug + cold_target) <= 1                
                  
@@ -82,26 +96,33 @@ def run_analysis(_):
   #pdb.set_trace()
 
   if mode == 'regression':
-    metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean),
-      dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean),
-      dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean)]
+    metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
+      dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
+      dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate)]
   elif mode == 'classification':
     direction = True
-    metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean),
-      dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean)]
+    metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
+      dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate)]
   elif mode == "reg-threshold":
     # TODO: this [0] is just a temporary solution. Need to implement per-task thresholds.
     # It is not a very trivial task.
     direction = True
     metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
-      threshold=threshold[0], mode="regression")]
+      threshold=threshold[0], mode="regression", arithmetic_mean=arithmetic_mean, 
+      aggregate_list=aggregate)]
 
   # We assume that values above the threshold are "on" or 1, those below are "off"
   # or 0.  
   loading_functions = {
     'davis': dcCustom.molnet.load_davis,
     'all_kinase': dcCustom.molnet.load_kinases,
-    'tc_kinase':dcCustom.molnet.load_tc_kinases
+    'tc_kinase':dcCustom.molnet.load_tc_kinases,
+    'tc_full_kinase': dcCustom.molnet.load_tc_full_kinases
   }  
   # if mode == 'regression' or mode == 'reg-threshold':
     # model = 'weave_regression'
@@ -127,17 +148,16 @@ def run_analysis(_):
   if cross_validation:    
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
-                                                  test=test, split=split, reload=reload, 
+                                                  test=test, split=split, reload=isreload, 
                                                   K = fold_num, mode=mode, predict_cold=predict_cold,
-                                                  cold_drug=cold_drug, cold_target=cold_target)
-                                                  #prot_seq_dict=prot_seq_dict)
+                                                  cold_drug=cold_drug, cold_target=cold_target,
+                                                  prot_seq_dict=prot_seq_dict)
   else:
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
-                                                  test=test, split=split, reload=reload, mode=mode,
+                                                  test=test, split=split, reload=isreload, mode=mode,
                                                   predict_cold=predict_cold, cold_drug=cold_drug, 
-                                                  cold_target=cold_target)
-    #, prot_seq_dict=prot_seq_dict)
+                                                  cold_target=cold_target, prot_seq_dict=prot_seq_dict)
     
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
@@ -148,9 +168,22 @@ def run_analysis(_):
   valid_scores_list = []
   test_scores_list = []
 
+  aggregated_tasks = copy.deepcopy(tasks)
+  meta_task_list = []
+  if aggregate is not None and len(aggregate) > 0:
+    assert tasks is not None      
+    for meta_task_name in aggregate:        
+      for i, task_name in enumerate(tasks):
+        if re.search(meta_task_name, task_name, re.I):                  
+          if meta_task_name not in meta_task_list:
+            meta_task_list.append(meta_task_name)
+            aggregated_tasks.append(meta_task_name)          
+          aggregated_tasks.remove(task_name)
+
   matchObj = re.match('mpnn', model, re.I)
   model = 'mpnn' if matchObj else model
-   
+  
+  # TODO: need to put aggregate here. 
   if hyper_param_search: # We don't use cross validation in this case.
     if hyper_parameters is None:
       hyper_parameters = hps[model]
@@ -177,7 +210,9 @@ def run_analysis(_):
         log_file=log_file,
         mode=mode,
         no_concordance_index=no_concord,
-        plot=plot)
+        plot=plot,
+        verbose_search=verbose_search,
+        aggregated_tasks=aggregated_tasks)
     hyper_parameters = hyper_param_opt
   
   opt_epoch = -1
@@ -214,7 +249,8 @@ def run_analysis(_):
           seed=seed,
           model_dir=model_dir,
           no_concordance_index=no_concord,
-          plot=plot)
+          plot=plot,
+          aggregated_tasks=aggregated_tasks)
     train_scores_list.append(train_score)
     valid_scores_list.append(valid_score)
     test_scores_list.append(test_score)
@@ -238,7 +274,8 @@ def run_analysis(_):
           seed=seed,
           model_dir=model_dir,
           no_concordance_index=no_concord,
-          plot=plot)
+          plot=plot,
+          aggregated_tasks=aggregated_tasks)
       # TODO: I made the decision to force disable early stopping for cross validation here,
       # not quite sure whether this is right.
       train_scores_list.append(train_score)
@@ -252,7 +289,7 @@ def run_analysis(_):
         train_score_dict = train_score[model_name]
         valid_score_dict = valid_score[model_name]
         
-        if len(tasks) > 1:
+        if len(aggregated_tasks) > 1:
           train_score_dict = train_score[model_name]['averaged']
           valid_score_dict = valid_score[model_name]['averaged']          
 
@@ -268,11 +305,11 @@ def run_analysis(_):
           output_line.extend(['fold_num', h])
           writer.writerow(output_line)
           
-          if len(tasks) > 1:
+          if len(aggregated_tasks) > 1:
             train_score_tasks = train_score[model_name]['per_task_score'][i]
             valid_score_tasks = valid_score[model_name]['per_task_score'][i]
             
-            for index, task in enumerate(tasks):
+            for index, task in enumerate(aggregated_tasks):
               train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
               dataset_nm = dataset + '_' + task
               output_line = [
@@ -284,7 +321,7 @@ def run_analysis(_):
   
   time_finish_fitting = time.time()
   
-  results_file = 'results' + model
+  results_file = 'results_' + model
   
   if mode == 'classification':
     results_file += '_cls'
@@ -313,7 +350,7 @@ def run_analysis(_):
         train_score_dict = train_score[model_name]
         valid_score_dict = valid_score[model_name]
         
-        if len(tasks) > 1:
+        if len(aggregated_tasks) > 1:
           train_score_dict = train_score[model_name]['averaged']
           valid_score_dict = valid_score[model_name]['averaged']          
 
@@ -331,11 +368,11 @@ def run_analysis(_):
               ['time_for_running', time_finish_fitting - time_start_fitting])
           writer.writerow(output_line)
           
-          if len(tasks) > 1:
+          if len(aggregated_tasks) > 1:
             train_score_tasks = train_score[model_name]['per_task_score'][i]
             valid_score_tasks = valid_score[model_name]['per_task_score'][i]
             
-            for index, task in enumerate(tasks):
+            for index, task in enumerate(aggregated_tasks):
               train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
               dataset_nm = dataset + '_' + task
               output_line = [
@@ -354,7 +391,7 @@ def run_analysis(_):
       valid_score_dict = valid_score[model_name]
       if test:
         test_score_dict = test_score[model_name]
-      if len(tasks) > 1:
+      if len(aggregated_tasks) > 1:
         train_score_dict = train_score[model_name]['averaged']
         valid_score_dict = valid_score[model_name]['averaged']
         if test:
@@ -379,12 +416,12 @@ def run_analysis(_):
           output_line.extend(['best validation score', opt_epoch[1]])
         writer.writerow(output_line)
         
-        if len(tasks) > 1:
+        if len(aggregated_tasks) > 1:
           train_score_tasks = train_score[model_name]['per_task_score'][i]
           valid_score_tasks = valid_score[model_name]['per_task_score'][i]
           if test:
             test_score_tasks = test_score[model_name]['per_task_score'][i]
-          for index, task in enumerate(tasks):
+          for index, task in enumerate(aggregated_tasks):
             train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
             dataset_nm = dataset + '_' + task
             output_line = [
@@ -467,6 +504,20 @@ if __name__ == '__main__':
       action='store_true'
   )
   parser.add_argument(
+      '--verbose_search',
+      default=False,
+      help='Flag of whether current best scores are outputted to a file in the \
+        hyperparameter searching process.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--arithmetic_mean',
+      default=False,
+      help='Flag of whether arithmetic means are calculated for validation scores in \
+        the hyperparameter searching process.',
+      action='store_true'
+  )
+  parser.add_argument(
       '--max_iter',
       type=int,
       default=42,
@@ -489,6 +540,16 @@ if __name__ == '__main__':
       default=False,
       help='Flag of whether cross validations will be performed.',
       action='store_true'
+  )
+  parser.add_argument(
+      '--aggregate',
+      #nargs='*',
+      action = 'append',
+      #default=["davis_data/prot_desc.csv", "metz_data/prot_desc.csv"],
+      help='A list of strings that tasks containing which should be aggregated based on the \
+        same string. Say, we have tasks "toxcast_3000", "toxcast_3100", and the aggregate list\
+        is ["toxcast", ...], then we should aggregate the two tasks into one composite "toxcast"\
+        task.'      
   )
   parser.add_argument(
       '--test',      

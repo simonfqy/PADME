@@ -14,6 +14,7 @@ import pdb
 import csv
 import time
 import itertools
+from sklearn.metrics import mean_squared_error
 from multiprocessing import Pool
 
 prot_desc_path="davis_data/prot_desc.csv"
@@ -121,6 +122,10 @@ def concordance_index3(y_true, y_pred):
 def taking(maski, y_i):
   return y_i[maski]
 
+def rms_score(y_true, y_pred):
+  """Computes RMS error."""
+  return np.sqrt(mean_squared_error(y_true, y_pred))
+
 def concordance_index4(y_true, y_pred):
   y_true_1 = tf.expand_dims(y_true, 0)
   y_true_2 = tf.expand_dims(y_true, 1)
@@ -187,13 +192,17 @@ def concordance_index4(y_true, y_pred):
 if __name__=="__main__":
   #prot_desc_dict = load_prot_desc_dict(prot_desc_path)
   np.random.seed(seed=43)
-  y_true = np.random.rand(15000)
-  y_pred = np.random.rand(15000)
-  y_true[2500:4000] = 2.0
-  y_pred[2000:3300] = 2.0  
+  y_true = np.random.rand(360)
+  y_pred = np.random.rand(360)
+  # y_true[2500:4000] = 2.0
+  # y_pred[2000:3300] = 2.0
+  # y_true = np.array([])
+  # y_pred = np.array([])
   time_start = time.time()
-  result = concordance_index4(y_true, y_pred)
+  #result = concordance_index2(y_true, y_pred)
+  result = concordance_index(y_true, y_pred)
   time_end = time.time()
+  print(len(y_true))
   print(result)
   print("time used:", time_end-time_start)
   # np.random.seed(seed=24)
