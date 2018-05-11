@@ -120,6 +120,7 @@ def run_analysis(_):
   # or 0.  
   loading_functions = {
     'davis': dcCustom.molnet.load_davis,
+    'metz': dcCustom.molnet.load_metz,
     'all_kinase': dcCustom.molnet.load_kinases,
     'tc_kinase':dcCustom.molnet.load_tc_kinases,
     'tc_full_kinase': dcCustom.molnet.load_tc_full_kinases
