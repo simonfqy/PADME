@@ -80,7 +80,8 @@ class Evaluator(object):
                                 stats_out=None,
                                 per_task_metrics=False,
                                 no_concordance_index=False,
-                                plot=False):
+                                plot=False,
+                                no_r2=False):
     """
     Computes statistics of model on test data and saves results to csv.
 
@@ -120,6 +121,9 @@ class Evaluator(object):
     plot_finished = False
     # Compute multitask metrics
     for i, metric in enumerate(metrics):
+      mtc_name = metric.metric.__name__
+      if no_r2 and (mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score'):
+        continue
       if per_task_metrics:
         if self.is_training_set:
           if no_concordance_index and metric.metric.__name__ =="concordance_index":
@@ -271,7 +275,7 @@ class GeneratorEvaluator(object):
         csvwriter.writerow([mol_id] + list(y_pred))
 
   def compute_model_performance(self, metrics, csv_out=None, stats_out=None, 
-                                per_task_metrics=False,
+                                per_task_metrics=False, no_r2=False,
                                 no_concordance_index=False, plot=False):
     """
     Computes statistics of model on test data and saves results to csv.
@@ -329,6 +333,9 @@ class GeneratorEvaluator(object):
     plot_finished = False
     # Compute multitask metrics
     for i, metric in enumerate(metrics):
+      mtc_name = metric.metric.__name__
+      if no_r2 and (mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score'):
+        continue
       if per_task_metrics:
         if self.is_training_set:
           if no_concordance_index and metric.metric.__name__ =="concordance_index":
