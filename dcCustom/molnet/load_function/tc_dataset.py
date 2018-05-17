@@ -42,7 +42,6 @@ def load_tc(featurizer = 'Weave', cross_validation=False, test=False, split='ran
   df = pd.read_csv(dataset_file, header = 0, index_col=False)
   headers = list(df)
   tasks = headers[:-3]
-  prefix = "full_" + featurizer
   
   if reload:
     delim = "/"
@@ -54,11 +53,11 @@ def load_tc(featurizer = 'Weave', cross_validation=False, test=False, split='ran
       delim = "_cold_target" + delim
     if cross_validation:
       delim = "_CV" + delim
-      save_dir = os.path.join(data_dir, prefix + delim + "kinase_tc/" + mode + "/" + split)
+      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
       loaded, all_dataset, transformers = dcCustom.utils.save.load_cv_dataset_from_disk(
           save_dir, K)
     else:
-      save_dir = os.path.join(data_dir, prefix + delim + "kinase_tc/" + mode + "/" + split)
+      save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
       loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
           save_dir)
     if loaded:
