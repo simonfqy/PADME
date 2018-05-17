@@ -8,3 +8,4 @@ from dcCustom.molnet.load_function.kiba_dataset import load_kiba
 from dcCustom.molnet.load_function.kinase_datasets import load_kinases
 from dcCustom.molnet.load_function.tc_kinase_datasets import load_tc_kinases
 from dcCustom.molnet.load_function.tc_full_kinase_datasets import load_tc_full_kinases
+from dcCustom.molnet.load_function.tc_dataset import load_toxcast
