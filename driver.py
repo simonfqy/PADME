@@ -56,6 +56,7 @@ def run_analysis(_):
   split= FLAGS.split
   threshold = FLAGS.threshold
   no_concord = FLAGS.no_concord
+  no_r2 = FLAGS.no_r2
   #direction = FLAGS.direction
   out_path = FLAGS.out_path
   fold_num = FLAGS.fold_num
@@ -96,7 +97,7 @@ def run_analysis(_):
   #pdb.set_trace()
 
   if mode == 'regression':
-    metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean, 
+    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean, 
       arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
       dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean, 
       arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
@@ -104,7 +105,7 @@ def run_analysis(_):
       arithmetic_mean=arithmetic_mean, aggregate_list=aggregate)]
   elif mode == 'classification':
     direction = True
-    metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
+    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
       arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
       dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean, 
       arithmetic_mean=arithmetic_mean, aggregate_list=aggregate)]
@@ -112,7 +113,7 @@ def run_analysis(_):
     # TODO: this [0] is just a temporary solution. Need to implement per-task thresholds.
     # It is not a very trivial task.
     direction = True
-    metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
+    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
       threshold=threshold[0], mode="regression", arithmetic_mean=arithmetic_mean, 
       aggregate_list=aggregate)]
 
@@ -121,6 +122,8 @@ def run_analysis(_):
   loading_functions = {
     'davis': dcCustom.molnet.load_davis,
     'metz': dcCustom.molnet.load_metz,
+    'kiba': dcCustom.molnet.load_kiba,
+    'toxcast': dcCustom.molnet.load_toxcast,
     'all_kinase': dcCustom.molnet.load_kinases,
     'tc_kinase':dcCustom.molnet.load_tc_kinases,
     'tc_full_kinase': dcCustom.molnet.load_tc_full_kinases
@@ -195,7 +198,7 @@ def run_analysis(_):
         train_dataset,
         valid_dataset,
         transformers,
-        metric,
+        metrics,
         prot_desc_dict,
         prot_desc_length,
         tasks=tasks,
@@ -211,6 +214,7 @@ def run_analysis(_):
         log_file=log_file,
         mode=mode,
         no_concordance_index=no_concord,
+        no_r2=no_r2,
         plot=plot,
         verbose_search=verbose_search,
         aggregated_tasks=aggregated_tasks)
@@ -236,7 +240,7 @@ def run_analysis(_):
           tasks,
           transformers,
           n_features,
-          metric,
+          metrics,
           model,
           prot_desc_dict,
           prot_desc_length,
@@ -250,6 +254,7 @@ def run_analysis(_):
           seed=seed,
           model_dir=model_dir,
           no_concordance_index=no_concord,
+          no_r2=no_r2,
           plot=plot,
           aggregated_tasks=aggregated_tasks)
     train_scores_list.append(train_score)
@@ -264,7 +269,7 @@ def run_analysis(_):
           tasks,
           transformers,
           n_features,
-          metric,
+          metrics,
           model,
           prot_desc_dict,
           prot_desc_length,
@@ -275,6 +280,7 @@ def run_analysis(_):
           seed=seed,
           model_dir=model_dir,
           no_concordance_index=no_concord,
+          no_r2=no_r2,
           plot=plot,
           aggregated_tasks=aggregated_tasks)
       # TODO: I made the decision to force disable early stopping for cross validation here,
@@ -456,6 +462,12 @@ if __name__ == '__main__':
       '--no_concord',
       default=False,
       help='If true, then concordance index will not be computed for the training set.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--no_r2',
+      default=False,
+      help='If true, then R square will not be included as a metric for hyperparameter searching.',
       action='store_true'
   )
   parser.add_argument(
