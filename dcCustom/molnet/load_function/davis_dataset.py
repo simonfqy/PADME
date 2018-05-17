@@ -30,10 +30,10 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
 
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    tasks = ['interaction_value']
+    tasks = ['davis']
     file_name = "restructured.csv"
   elif mode == 'classification':
-    tasks = ['interaction_bin']
+    tasks = ['davis_bin']
     file_name = "restructured_bin.csv"
 
   data_dir = "davis_data/"

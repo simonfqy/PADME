@@ -30,10 +30,10 @@ def load_metz(featurizer = 'Weave', cross_validation=False, test=False, split='r
 
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    tasks = ['interaction_value']
+    tasks = ['metz']
     file_name = "restructured_unique.csv"
   elif mode == 'classification':
-    tasks = ['interaction_bin']
+    tasks = ['metz_bin']
     file_name = "restructured_bin.csv"
 
   data_dir = "metz_data/"
