@@ -24,7 +24,7 @@ protList = list(set(df_uniprot.iloc[:]['Uniprot_ID']))
 num_subgroups = len(set(df_uniprot.iloc[:]['Subgroup']))
 
 df = pd.read_csv('Assays_smiles_INCHI.csv', header = 0, index_col=2)
-#df=df.head(400)
+#df=df.head(300)
 assayList = list(df)[16:]
 molList = list(df.index)
 molList = [mol for mol in molList if mol==mol]
@@ -125,15 +125,19 @@ for i in range(num_inf_entries):
 # #pdb.set_trace()
 
 #counter = 0
+shuffled = np.random.permutation(range(len(pair_list)))
 start_writing = time.time()
-with open('restructured.csv', 'w', newline='') as csvfile:
-  fieldnames = subgroup_list + ['smiles', 'proteinName']
+subgroup_list = ['toxcast_' + str(task_id) for task_id in subgroup_list]
+with open('restructured_new.csv', 'w', newline='') as csvfile:
+  fieldnames = subgroup_list + ['smiles', 'proteinName', 'protein_dataset']
   writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
   writer.writeheader()
-  for i, pair in enumerate(pair_list):
-    data_line = ['' if np.isnan(entry) else entry for entry in data_matrix[i]]
+  for i in range(len(pair_list)):
+    index = shuffled[i]
+    pair = pair_list[index]
+    data_line = ['' if np.isnan(entry) else entry for entry in data_matrix[index]]
     line_values = dict(zip(subgroup_list, data_line))
-    out_line = {'smiles': pair[0], 'proteinName': pair[1]}
+    out_line = {'smiles': pair[0], 'proteinName': pair[1], 'protein_dataset': 'toxcast'}
     line_values.update(out_line)
     writer.writerow(line_values)
 
