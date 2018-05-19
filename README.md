@@ -7,6 +7,8 @@ The Python script `driver.py` at the top level is in charge of calling functions
 
 The protein descriptors used is PSC, Protein Sequence Composition descriptor, which are stored as files in the respective dataset folders, like `/full_toxcast`. You can specify the path of the protein sequence descriptor files in the `.sh` scripts. 
 
+Currently it works fine for `graphconvreg`, `weave_regression`, `tf_regression`, and `mpnn`. I will need updates to the classification models so that it would work correct for them too, like `weave`, `graphconv`, etc. 
+
 You must first have `DeepChem` installed for `PADME` to work correctly.
 
 Other folders like `oldCode` and `phase1` are not related to PADME, they are for the first phase of my project. You can neglect them.
