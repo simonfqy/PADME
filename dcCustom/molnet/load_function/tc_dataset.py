@@ -21,7 +21,7 @@ from dcCustom.molnet.preset_hyper_parameters import hps
 from dcCustom.molnet.run_benchmark_models import model_regression, model_classification
 from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
-def load_tc(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
+def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False, 
   cold_target=False, prot_seq_dict=None): 
   # The last parameter means only splitting into training and validation sets.

@@ -61,13 +61,13 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
   if featurizer == 'Weave':
     featurizer = dcCustom.feat.WeaveFeaturizer()
   elif featurizer == 'ECFP':
-    featurizer = deepchem.feat.CircularFingerprint(size=1024)
+    featurizer = dcCustom.feat.CircularFingerprint(size=1024)
   elif featurizer == 'GraphConv':
     featurizer = dcCustom.feat.ConvMolFeaturizer()
 
   loader = dcCustom.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
-      featurizer=featurizer)
+      source_field = 'protein_dataset', featurizer=featurizer, prot_seq_dict=prot_seq_dict)
   dataset = loader.featurize(dataset_file, shard_size=8192)
   
   if mode == 'regression':
