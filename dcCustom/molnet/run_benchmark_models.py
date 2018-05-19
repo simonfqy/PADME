@@ -33,11 +33,15 @@ def model_regression(
             # for early stopping.
             patience = 3,
             model_dir="./model_dir",
+            no_r2=False,
             no_concordance_index=False,
             direction = None,
             seed=123,
             tensorboard = True,
-            plot=False):
+            plot=False,
+            verbose_search=False,
+            log_file=None,
+            aggregated_tasks=[]):
   train_scores = {}
   valid_scores = {}
   test_scores = {}
@@ -189,14 +193,17 @@ def model_regression(
   
   if nb_epoch is None:
     opt_epoch = model.fit(train_dataset, valid_dataset, restore=False, 
-      metric=metric, direction=direction, early_stopping=early_stopping, 
+      metric=metric, direction=direction, early_stopping=early_stopping, no_r2=no_r2,
       evaluate_freq=evaluate_freq, patience = patience, transformers=transformers,
-      per_task_metrics=per_task_metrics, tasks=tasks)
+      per_task_metrics=per_task_metrics, tasks=tasks, verbose_search=verbose_search,
+      log_file=log_file, aggregated_tasks=aggregated_tasks, model_name=model_name)
   else:
     opt_epoch = model.fit(train_dataset, valid_dataset, nb_epoch=nb_epoch,
       restore=False, metric=metric, direction=direction, early_stopping=early_stopping, 
       evaluate_freq=evaluate_freq, patience = patience, transformers=transformers,
-      per_task_metrics=per_task_metrics, tasks=tasks)
+      per_task_metrics=per_task_metrics, tasks=tasks, verbose_search=verbose_search,
+      log_file=log_file, aggregated_tasks=aggregated_tasks, model_name=model_name,
+      no_r2=no_r2)
   if not early_stopping:
     opt_epoch = None
   
@@ -250,7 +257,9 @@ def model_classification(
             seed=123,
             tensorboard = False,
             model_dir="./cls_model_dir",
-            plot=False):
+            plot=False,
+            verbose_search=False,
+            log_file=None):
   # TODO: need to copy the code changes related to plotting from the function above.
   train_scores = {}
   valid_scores = {}
