@@ -48,7 +48,11 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       ],
       log_file='GPhypersearch.log',
       mode='classification',
-      no_concordance_index=False):
+      no_concordance_index=False,
+      no_r2=False,
+      plot=False,
+      verbose_search=False,
+      aggregated_tasks=[]):
     """Perform hyperparams search using a gaussian process assumption
 
     params_dict include single-valued parameters being optimized,
@@ -232,7 +236,11 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
               patience=patience,
               direction=direction,
               model_dir=model_dir,
-              no_concordance_index=no_concordance_index)
+              no_concordance_index=no_concordance_index,
+              verbose_search=verbose_search,
+              log_file=log_file,
+              no_r2=no_r2,
+              aggregated_tasks=aggregated_tasks)
         elif mode == 'regression' or mode == 'reg-threshold':          
           train_scores, valid_scores, _, opt_epoch = model_regression(
               train_dataset,
@@ -251,7 +259,11 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
               patience=patience,
               direction=direction,
               model_dir=model_dir,
-              no_concordance_index=no_concordance_index)
+              no_concordance_index=no_concordance_index,
+              verbose_search=verbose_search,
+              log_file=log_file,
+              no_r2=no_r2,
+              aggregated_tasks=aggregated_tasks)
         else:
           raise ValueError("Invalid mode!")
         # similar to fit() function in tensor_graph.py, we also use combination here.
@@ -266,8 +278,12 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             composite_mtc_name = mtc.name
             if mtc_name == 'rms_score':
               score += val_scores[composite_mtc_name]
-            if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
-              score += -0.5 * val_scores[composite_mtc_name]
+            if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':              
+              if no_r2:
+                coef = 0.0
+              else:
+                coef = -0.5
+              score += coef * val_scores[composite_mtc_name]
             if mtc_name == 'concordance_index':
               score += -val_scores[composite_mtc_name]
         elif mode == 'reg-threshold' or mode == 'classification':
@@ -318,6 +334,9 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
     from pyGPGO.acquisition import Acquisition
     from pyGPGO.surrogates.GaussianProcess import GaussianProcess
     from pyGPGO.GPGO import GPGO
+    with open(log_file, 'a') as file:
+      file.write("------------------------------------------------------------------")
+      file.write('\n')
     cov = matern32()
     gp = GaussianProcess(cov)
     acq = Acquisition(mode='ExpectedImprovement')
@@ -368,7 +387,11 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             patience=patience,
             direction=direction,
             model_dir=model_dir,
-            no_concordance_index=no_concordance_index)
+            no_concordance_index=no_concordance_index,
+            verbose_search=verbose_search,
+            log_file=log_file,
+            no_r2=no_r2,
+            aggregated_tasks=aggregated_tasks)
       elif mode == 'regression' or mode == 'reg-threshold':
         train_scores, valid_scores, _, opt_epoch = model_regression(
             train_dataset,
@@ -387,7 +410,11 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             patience=patience,
             direction=direction,
             model_dir=model_dir,
-            no_concordance_index=no_concordance_index)
+            no_concordance_index=no_concordance_index,
+            verbose_search=verbose_search,
+            log_file=log_file,
+            no_r2=no_r2,
+            aggregated_tasks=aggregated_tasks)
       else:
         raise ValueError("Invalid mode!")
       
@@ -403,7 +430,11 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
           if mtc_name == 'rms_score':
             score += val_scores[composite_mtc_name]
           if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
-            score += -0.5 * val_scores[composite_mtc_name]
+            if no_r2:
+              coef = 0.0
+            else:
+              coef = -0.5
+            score += coef * val_scores[composite_mtc_name]
           if mtc_name == 'concordance_index':
             score += -val_scores[composite_mtc_name]
       elif mode == 'reg-threshold' or mode == 'classification':
