@@ -8,6 +8,7 @@ import os
 import re
 import copy
 import itertools
+from dcCustom.metrics.cindex_measure import cindex
 from multiprocessing import Pool
 from time import gmtime, strftime
 from deepchem.utils.save import log
@@ -122,7 +123,7 @@ def inner_loop(i, y_true_1, y_pred_1, y_true, y_pred):
   total_pairs = sum(valid_pairs)
   return summ, total_pairs
 
-def concordance_index(y_true, y_pred):
+def concordance_index2(y_true, y_pred):
   assert len(y_true) == len(y_pred)
   # I found that short_CI is better when length is smaller than 350.
   if len(y_true) <= 360:
@@ -130,7 +131,7 @@ def concordance_index(y_true, y_pred):
 
   total_pairs = 0
   sum_score = 0.0
-  CPU_COUNT = int(0.8*os.cpu_count())
+  CPU_COUNT = int(0.7*os.cpu_count())
 
   with Pool(processes=CPU_COUNT) as pool:
     i = 0
@@ -153,6 +154,9 @@ def concordance_index(y_true, y_pred):
         total_pairs += sum(pairs)
         
   return sum_score/total_pairs
+
+def concordance_index(y_true, y_pred):
+  return cindex(y_true, y_pred)
 
 def kappa_score(y_true, y_pred):
   """Calculate Cohen's kappa for classification tasks.
