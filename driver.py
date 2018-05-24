@@ -73,6 +73,8 @@ def run_analysis(_):
   #drugs and targets are tested or validated.
   cold_drug = FLAGS.cold_drug
   cold_target = FLAGS.cold_target
+  split_warm = FLAGS.split_warm
+  split_threshold = FLAGS.split_threshold
   early_stopping = FLAGS.early_stopping
   evaluate_freq = FLAGS.evaluate_freq # Number of training epochs before evaluating
   # for early stopping.
@@ -85,7 +87,7 @@ def run_analysis(_):
   plot = FLAGS.plot
   aggregate = FLAGS.aggregate
 
-  assert (predict_cold + cold_drug + cold_target) <= 1                
+  assert (predict_cold + cold_drug + cold_target + split_warm) <= 1                
                  
   assert model == model # Not a NAN
   searchObj = re.search('reg', model, re.I)
@@ -155,13 +157,16 @@ def run_analysis(_):
                                                   test=test, split=split, reload=isreload, 
                                                   K = fold_num, mode=mode, predict_cold=predict_cold,
                                                   cold_drug=cold_drug, cold_target=cold_target,
+                                                  split_warm=split_warm, split_threshold=split_threshold,
                                                   prot_seq_dict=prot_seq_dict)
   else:
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
                                                   test=test, split=split, reload=isreload, mode=mode,
                                                   predict_cold=predict_cold, cold_drug=cold_drug, 
-                                                  cold_target=cold_target, prot_seq_dict=prot_seq_dict)
+                                                  cold_target=cold_target, split_warm=split_warm,
+                                                  split_threshold=split_threshold, 
+                                                  prot_seq_dict=prot_seq_dict)
     
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
@@ -187,7 +192,6 @@ def run_analysis(_):
   matchObj = re.match('mpnn', model, re.I)
   model = 'mpnn' if matchObj else model
   
-  # TODO: need to put aggregate here. 
   if hyper_param_search: # We don't use cross validation in this case.
     if hyper_parameters is None:
       hyper_parameters = hps[model]
@@ -336,6 +340,8 @@ def run_analysis(_):
     results_file += '_thrhd'
   if predict_cold:
     results_file += '_cold'
+  if split_warm:
+    results_file += '_warm'
   if cold_drug:
     results_file += '_cold_drug'
   elif cold_target:
@@ -575,6 +581,19 @@ if __name__ == '__main__':
       default=False,
       help='Flag of whether the split will leave "cold" entities in the test data.',
       action='store_true'
+  )
+  parser.add_argument(
+      '--split_warm',      
+      default=False,
+      help='Flag of whether the split will not leave "cold" entities in the test data.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--split_threshold',
+      type=int,
+      default=1,
+      help='Threshold such that entities with observations no more than it would be filtered out.\
+        Only useful when split_warm is true.'
   )
   parser.add_argument(
       '--cold_drug',      
