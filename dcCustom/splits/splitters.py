@@ -7,7 +7,7 @@ from __future__ import unicode_literals
 
 import random
 
-__author__ = "Bharath Ramsundar, Aneesh Pappu "
+__author__ = "Bharath Ramsundar, Aneesh Pappu, modified by Qingyuan Feng "
 __copyright__ = "Copyright 2016, Stanford University"
 __license__ = "MIT"
 
@@ -19,6 +19,7 @@ import os
 import random
 import math
 import pdb
+import copy
 from rdkit import Chem
 from rdkit import DataStructs
 from rdkit.Chem import AllChem
@@ -57,13 +58,15 @@ class Splitter(object):
     """
 
   def __init__(self, verbose=False, split_cold=False, cold_drug=False, cold_target=False,
-    prot_seq_dict=None):
+    prot_seq_dict=None, split_warm=False, threshold=1):
     """Creates splitter object."""
     self.verbose = verbose
     self.split_cold = split_cold
     self.cold_drug = cold_drug
     self.cold_target = cold_target
+    self.split_warm = split_warm
     self.prot_seq_dict = prot_seq_dict
+    self.threshold = threshold
 
   def k_fold_split(self, dataset, k, directories=None, **kwargs):
     """
@@ -116,6 +119,7 @@ class Splitter(object):
           frac_train=frac_fold,
           frac_valid=1 - frac_fold,
           frac_test=0)
+      self.split_warm = False # Only useful in the first time.
       cv_dataset = rem_dataset.select(fold_inds, select_dir=cv_dir)
       cv_datasets.append(cv_dataset)
       rem_dataset = rem_dataset.select(rem_inds)
@@ -697,9 +701,9 @@ class RandomSplitter(Splitter):
       random.seed(seed)
     num_datapoints = len(dataset)
 
-    assert (self.split_cold + self.cold_drug + self.cold_target) <= 1
+    assert (self.split_cold + self.cold_drug + self.cold_target + self.split_warm) <= 1
     
-    if not (self.split_cold or self.cold_drug or self.cold_target):
+    if not (self.split_cold or self.cold_drug or self.cold_target or self.split_warm):
       train_cutoff = int(frac_train * num_datapoints)
       valid_cutoff = int((frac_train + frac_valid) * num_datapoints)
       shuffled = np.random.permutation(range(num_datapoints))
@@ -710,8 +714,11 @@ class RandomSplitter(Splitter):
     all_entry_id = set(range(num_datapoints))
     entries_for_training = set()
     num_training = int(num_datapoints * frac_train)
+    num_test = int(num_datapoints * frac_test)
+    num_validation = num_datapoints - num_training - num_test    
     element_id = 0
-
+    
+    # All the special splitting schemes here are for Cross-Validation ONLY.
     if self.split_cold:
       # We would need to split the dataset into cold-drugs and cold-targets.
       drug_entries = {}
@@ -761,9 +768,233 @@ class RandomSplitter(Splitter):
         if len(entries_for_training) >= num_training:
           break
 
+    elif self.split_warm:
+      assert self.threshold > 0
+      mol_entries = {} 
+      prot_entries = {}
+      mol_list = []
+      prot_list = []
+      entry_id_to_pair = {} 
+      for (X, _, _, _) in dataset.itersamples():       
+      
+        mol = X[0]
+        if mol not in mol_entries:
+          mol_entries[mol] = set()
+          mol_list.append(mol)
+        mol_entries[mol].add(element_id)
+      
+        prot = X[1]
+        if prot not in prot_entries:
+          prot_entries[prot] = set()
+          prot_list.append(prot)        
+        prot_entries[prot].add(element_id)
+
+        pair = (mol, prot)
+        entry_id_to_pair[element_id] = pair
+        #pdb.set_trace()
+        element_id += 1
+      #pdb.set_trace()
+      print("element_id: ", element_id)
+      print("len(mol_entries): ", len(mol_entries))
+      print("len(prot_entries): ", len(prot_entries))
+
+      carry_on = True
+      removed_entries = set()
+      num_already_removed = 0
+      while carry_on:
+        counter = 0        
+        for molecule in mol_list:
+          remain_this_mol_entries = mol_entries[molecule] - removed_entries
+          if len(remain_this_mol_entries) <= self.threshold:
+            counter += 1
+            mol_list.remove(molecule)
+            removed_entries.update(mol_entries[molecule])            
+            del mol_entries[molecule]
+            
+          else:
+            mol_entries[molecule] = remain_this_mol_entries
+        newly_removed = len(removed_entries) - num_already_removed
+        num_already_removed = len(removed_entries)
+        print("removing %d molecules with no more than %d entries, resulting in the \
+          removal of %d entries." % (counter, self.threshold, newly_removed))
+        
+        counter = 0
+        for protein in prot_list:
+          remain_this_prot_entries = prot_entries[protein] - removed_entries
+          if len(remain_this_prot_entries) <= self.threshold:
+            #carry_on = True
+            counter += 1
+            prot_list.remove(protein)
+            removed_entries.update(prot_entries[protein])
+            del prot_entries[protein]
+          else:
+            prot_entries[protein] = remain_this_prot_entries
+        newly_removed = len(removed_entries) - num_already_removed
+        num_already_removed = len(removed_entries)
+        print("removing %d proteins with no more than %d entries, resulting in the \
+          removal of %d entries." % (counter, self.threshold, newly_removed))
+        carry_on = False
+        for molecule in mol_list:
+          remain_this_mol_entries = mol_entries[molecule] - removed_entries
+          if len(remain_this_mol_entries) <= self.threshold:
+            carry_on = True
+            break
+
+      # Filtering is done. Now start splitting.
+      all_entry_id = all_entry_id - removed_entries 
+      num_datapoints = len(all_entry_id)
+      num_training = int(num_datapoints * frac_train)     
+      num_test = int(num_datapoints * frac_test)
+      num_validation = num_datapoints - num_training - num_test   
+      
+      entries_preserved = set()
+      unassigned_entries = set()      
+      for molecule in mol_list:
+        remain_this_mol_entries = mol_entries[molecule] - removed_entries
+        assert len(remain_this_mol_entries) > self.threshold
+        assert remain_this_mol_entries == mol_entries[molecule]
+        
+        mol_warm = False
+        mol_no_train = False
+        mol_no_preserve = False
+        # The next 3 protein sets are only intended for those proteins whose intersections with the
+        # current molecule are unassigned.
+        warm_prots = set()
+        no_train_prots = set()
+        no_preserved_prots = set()        
+        assigned_prots = set()
+        # For every molecule, we need to make sure not only itself has both test and training fold
+        # splits, but its entries' proteins have both as well.         
+        if len(entries_for_training & mol_entries[molecule]) <= 0:
+          mol_no_train = True
+        if len(entries_preserved & mol_entries[molecule]) <= 0:
+          mol_no_preserve = True
+          
+        for entry in mol_entries[molecule]:
+          protein = entry_id_to_pair[entry][1]
+          assert entry in prot_entries[protein]
+          if entry in entries_preserved or entry in entries_for_training:
+            assigned_prots.add(protein)
+          if len(prot_entries[protein] & entries_for_training) <= 0 and protein not in assigned_prots:            
+            no_train_prots.add(protein)
+          if len(prot_entries[protein] & entries_preserved) <= 0 and protein not in assigned_prots:
+            no_preserved_prots.add(protein)
+          if len(entries_preserved & prot_entries[protein]) > 0 and len(entries_for_training &
+            prot_entries[protein]) > 0 and protein not in assigned_prots:
+            warm_prots.add(protein)
+                  
+        if mol_no_train:
+          unsolved = True
+          # Select the training entries for those proteins that have no training entries.
+          if len(no_train_prots) > 0:            
+            selected_prot = random.sample(no_train_prots, 1)[0]
+            #no_train_prots.remove(selected_prot)
+            unsolved = False            
+          if unsolved and len(warm_prots) > 0:            
+            selected_prot = random.sample(warm_prots, 1)[0]
+            unsolved = False
+          if unsolved and len(no_preserved_prots) > 0:
+            candidate_prots = set()
+            for protein in no_preserved_prots:
+              remaining_unassigned_entries = prot_entries[protein] - entries_for_training
+              if len(remaining_unassigned_entries) > 1:
+                candidate_prots.add(protein)
+            if len(candidate_prots) > 0:
+              selected_prot = random.sample(candidate_prots, 1)[0]
+              unsolved = False
+          assert not unsolved and selected_prot is not None
+          entry_to_write = mol_entries[molecule] & prot_entries[selected_prot]
+          assert len(entry_to_write) == 1
+          assigned_prots.add(selected_prot)
+          no_train_prots = no_train_prots - assigned_prots
+          warm_prots = warm_prots - assigned_prots
+          no_preserved_prots = no_preserved_prots - assigned_prots
+          entries_for_training.update(entry_to_write)
+        
+        if mol_no_preserve:
+          unsolved = True
+          # Select the preserved entries for those proteins that have no preserved entries.
+          if len(no_preserved_prots) > 0:            
+            selected_prot = random.sample(no_preserved_prots, 1)[0]
+            no_preserved_prots.remove(selected_prot)
+            unsolved = False            
+          if unsolved and len(warm_prots) > 0:            
+            selected_prot = random.sample(warm_prots, 1)[0]
+            unsolved = False
+          if unsolved and len(no_train_prots) > 0:
+            candidate_prots = set()
+            for protein in no_train_prots:
+              remaining_unassigned_entries = prot_entries[protein] - entries_preserved
+              if len(remaining_unassigned_entries) > 1:
+                candidate_prots.add(protein)
+            if len(candidate_prots) > 0:
+              selected_prot = random.sample(candidate_prots, 1)[0]
+              unsolved = False
+          assert not unsolved and selected_prot is not None
+          entry_to_write = mol_entries[molecule] & prot_entries[selected_prot]
+          assert len(entry_to_write) == 1
+          assigned_prots.add(selected_prot)
+          no_train_prots = no_train_prots - assigned_prots
+          warm_prots = warm_prots - assigned_prots
+          no_preserved_prots = no_preserved_prots - assigned_prots
+          entries_preserved.update(entry_to_write)
+        
+        if len(entries_preserved & mol_entries[molecule]) > 0 and len(entries_for_training &
+          mol_entries[molecule]) > 0:
+          mol_warm = True
+        
+        assert mol_warm
+        # Now handle the warm molecules. Objective: make all the entries' proteins warm if possible.        
+        if len(warm_prots.union(assigned_prots)) == len(mol_entries[molecule]): 
+          continue
+        # Fill them randomly.
+        if len(entries_preserved & entries_for_training) > 0:
+          pdb.set_trace()        
+        double_cold_prots = no_preserved_prots & no_train_prots            
+        for protein in double_cold_prots:
+          num_to_preserve = num_validation - len(entries_preserved)
+          num_to_train = num_training - len(entries_for_training)
+          entry_to_write = mol_entries[molecule] & prot_entries[protein]
+          assert len(entry_to_write) == 1
+          rand_num = random.uniform(0, num_to_preserve + num_to_train)            
+          if rand_num <= num_to_train:              
+            entries_for_training.update(entry_to_write)
+          else:
+            entries_preserved.update(entry_to_write)
+          assigned_prots.add(protein)
+        # num_to_preserve = num_validation - len(entries_preserved)
+        # num_to_train = num_training - len(entries_for_training)
+        no_preserved_prots = no_preserved_prots - assigned_prots
+        no_train_prots = no_train_prots - assigned_prots
+        
+        # Now deal with single cold proteins.          
+        if len(no_preserved_prots) > 0:            
+          for protein in no_preserved_prots:
+            entry_to_write = mol_entries[molecule] & prot_entries[protein]
+            entries_preserved.update(entry_to_write)
+            assigned_prots.add(protein)                        
+        if len(no_train_prots) > 0:
+          for protein in no_train_prots:
+            entry_to_write = mol_entries[molecule] & prot_entries[protein]
+            entries_for_training.update(entry_to_write)
+            assigned_prots.add(protein)
+        assert len(warm_prots.union(assigned_prots)) == len(mol_entries[molecule])
+        unassigned_entries.update(mol_entries[molecule] - entries_preserved - entries_for_training)
+
+      # Next need to make sure the corresponding proteins are warm-splitted.
+      for protein in prot_list:
+        remain_this_prot_entries = prot_entries[protein] - removed_entries
+        assert len(remain_this_prot_entries) > self.threshold
+        assert remain_this_prot_entries == prot_entries[protein]
+        assert len(prot_entries[protein] & entries_for_training) > 0
+        assert len(prot_entries[protein] & entries_preserved) > 0
+
+      num_to_select = num_training - len(entries_for_training)
+      entries_for_training.update(random.sample(unassigned_entries, num_to_select))
+
     else:
-      # Splitting with regards to cold_drug or cold_target.
-      entity_entries = {}      
+      entity_entries = {} 
+      # Splitting with regards to cold_drug or cold_target.           
       for (X, _, _, _) in dataset.itersamples():       
         if self.cold_drug:
           mol = X[0]
@@ -796,18 +1027,16 @@ class RandomSplitter(Splitter):
         if len(entries_for_training.union(entity_entries[entity_chosen])) > num_training:
           new_elements = entity_entries[entity_chosen].difference(entries_for_training)
           num_to_choose = num_training - len(entries_for_training)
-          new_elements = set(random.sample(new_elements, num_to_choose))
-          entries_for_training = entries_for_training.union(new_elements)        
+          new_elements = random.sample(new_elements, num_to_choose)
+          entries_for_training.update(new_elements)        
         else:
           # Only take union if the total size is within the limit.
-          entries_for_training = entries_for_training.union(entity_entries[entity_chosen])
+          entries_for_training.update(entity_entries[entity_chosen])
           del entity_entries[entity_chosen]
           
         if len(entries_for_training) >= num_training:
           break
 
-    num_test = int(num_datapoints * frac_test)
-    num_validation = num_datapoints - num_training - num_test
     remaining_entries = all_entry_id.difference(entries_for_training)
     entries_for_validation = set(random.sample(remaining_entries, num_validation))
     entries_for_testing = remaining_entries.difference(entries_for_validation)
