@@ -840,6 +840,10 @@ class RandomSplitter(Splitter):
             carry_on = True
             break
 
+      print("After the filtering")
+      print("Number of entries removed: ", len(removed_entries))
+      print("len(mol_entries): ", len(mol_entries))
+      print("len(prot_entries): ", len(prot_entries))
       # Filtering is done. Now start splitting.
       all_entry_id = all_entry_id - removed_entries 
       num_datapoints = len(all_entry_id)
@@ -852,8 +856,7 @@ class RandomSplitter(Splitter):
       for molecule in mol_list:
         remain_this_mol_entries = mol_entries[molecule] - removed_entries
         assert len(remain_this_mol_entries) > self.threshold
-        assert remain_this_mol_entries == mol_entries[molecule]
-        
+        assert remain_this_mol_entries == mol_entries[molecule]        
         mol_warm = False
         mol_no_train = False
         mol_no_preserve = False
@@ -887,8 +890,7 @@ class RandomSplitter(Splitter):
           unsolved = True
           # Select the training entries for those proteins that have no training entries.
           if len(no_train_prots) > 0:            
-            selected_prot = random.sample(no_train_prots, 1)[0]
-            #no_train_prots.remove(selected_prot)
+            selected_prot = random.sample(no_train_prots, 1)[0]            
             unsolved = False            
           if unsolved and len(warm_prots) > 0:            
             selected_prot = random.sample(warm_prots, 1)[0]
@@ -915,8 +917,7 @@ class RandomSplitter(Splitter):
           unsolved = True
           # Select the preserved entries for those proteins that have no preserved entries.
           if len(no_preserved_prots) > 0:            
-            selected_prot = random.sample(no_preserved_prots, 1)[0]
-            no_preserved_prots.remove(selected_prot)
+            selected_prot = random.sample(no_preserved_prots, 1)[0]            
             unsolved = False            
           if unsolved and len(warm_prots) > 0:            
             selected_prot = random.sample(warm_prots, 1)[0]
@@ -945,11 +946,11 @@ class RandomSplitter(Splitter):
         
         assert mol_warm
         # Now handle the warm molecules. Objective: make all the entries' proteins warm if possible.        
-        if len(warm_prots.union(assigned_prots)) == len(mol_entries[molecule]): 
+        if len(warm_prots.union(assigned_prots)) == len(mol_entries[molecule]):
+          unassigned_entries.update(mol_entries[molecule] - entries_preserved - entries_for_training) 
           continue
         # Fill them randomly.
-        if len(entries_preserved & entries_for_training) > 0:
-          pdb.set_trace()        
+        assert len(entries_preserved & entries_for_training) <= 0:             
         double_cold_prots = no_preserved_prots & no_train_prots            
         for protein in double_cold_prots:
           num_to_preserve = num_validation - len(entries_preserved)
@@ -990,6 +991,7 @@ class RandomSplitter(Splitter):
         assert len(prot_entries[protein] & entries_preserved) > 0
 
       num_to_select = num_training - len(entries_for_training)
+      assert len(unassigned_entries) >= num_to_select
       entries_for_training.update(random.sample(unassigned_entries, num_to_select))
 
     else:
