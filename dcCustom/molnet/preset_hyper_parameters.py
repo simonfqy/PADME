@@ -17,7 +17,9 @@ hps['tf'] = {
     'penalty_type': 'l2',
     'batch_size': 50,
     'nb_epoch': 10,
-    'learning_rate': 0.001
+    'learning_rate': 0.001,
+    'num_dense_layer': 3,
+    'dense_cmb_layer_size': 512
 }
 
 hps['tf_robust'] = {
@@ -124,14 +126,23 @@ hps['tf_regression'] = {
     'weight_init_stddevs': [0.02, 0.02],
     'bias_init_consts': [1., 1.],
     'dropouts': [0.25, 0.25],
+    #'dropout_prob': 0.105,
+    'dropout_prob': 0.262,
     'penalty': 0.0005,
     'penalty_type': 'l2',
-    'batch_size': 128,
-    'nb_epoch': 50,
-    'learning_rate': 0.0008,
-    'num_dense_layer': 3,
-    'dense_cmb_layer_size': 512
+    #'batch_size': 128,
+    'batch_size': 155,
+    'nb_epoch': 100,
+    #'nb_epoch': 66,
+    #'nb_epoch': 3,
+    #'learning_rate': 0.0008,
+    'learning_rate': 0.000311,
+    #'num_dense_layer': 3,
+    'num_dense_layer': 2,
+    #'dense_cmb_layer_size': 512
+    'dense_cmb_layer_size': 1211
 }
+
 hps['tf_regression_ft'] = {
     'layer_sizes': [400, 100, 100],
     'weight_init_stddevs': [0.05, 0.1, 0.1],
@@ -149,15 +160,25 @@ hps['krr'] = {'alpha': 1e-3}
 hps['krr_ft'] = {'alpha': 1e-3}
 hps['graphconvreg'] = {
     'batch_size': 128,
+    #'batch_size': 86, 
     'nb_epoch': 100,
-    'learning_rate': 0.0005,
+    #'nb_epoch': 3,
+    #'nb_epoch': 63,
+    #'learning_rate': 0.0002,
+    'learning_rate': 9.789365954742421e-05,
     'n_filters': 128,
+    #'n_filters': 160,
     'n_fully_connected_nodes': 256,
-    'dropout_prob': 0.2,
+    #'n_fully_connected_nodes': 492,
+    'dropout_prob': 0.1,
+    #'dropout_prob': 0.03567783932490167,
     'num_dense_layer': 3,
+    #'num_dense_layer': 8,
     'dense_cmb_layer_size': 512,
+    #'dense_cmb_layer_size': 1317,
     'seed': 123
 }
+
 hps['dtnn'] = {
     'batch_size': 64,
     'nb_epoch': 100,
@@ -178,7 +199,7 @@ hps['weave_regression'] = {
     #'batch_size': 110,
     #'batch_size': 93,
     'batch_size': 168,
-    'nb_epoch': 1,
+    'nb_epoch': 100,
     #'learning_rate': 6.3e-5,
     'learning_rate': 5.233e-5,
     #'n_graph_feat': 450,
