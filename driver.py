@@ -74,7 +74,7 @@ def run_analysis(_):
   cold_drug = FLAGS.cold_drug
   cold_target = FLAGS.cold_target
   split_warm = FLAGS.split_warm
-  split_threshold = FLAGS.split_threshold
+  filter_threshold = FLAGS.filter_threshold
   early_stopping = FLAGS.early_stopping
   evaluate_freq = FLAGS.evaluate_freq # Number of training epochs before evaluating
   # for early stopping.
@@ -157,15 +157,15 @@ def run_analysis(_):
                                                   test=test, split=split, reload=isreload, 
                                                   K = fold_num, mode=mode, predict_cold=predict_cold,
                                                   cold_drug=cold_drug, cold_target=cold_target,
-                                                  split_warm=split_warm, split_threshold=split_threshold,
-                                                  prot_seq_dict=prot_seq_dict)
+                                                  split_warm=split_warm, prot_seq_dict=prot_seq_dict,
+                                                  filter_threshold=filter_threshold)
   else:
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
                                                   test=test, split=split, reload=isreload, mode=mode,
                                                   predict_cold=predict_cold, cold_drug=cold_drug, 
                                                   cold_target=cold_target, split_warm=split_warm,
-                                                  split_threshold=split_threshold, 
+                                                  filter_threshold=filter_threshold, 
                                                   prot_seq_dict=prot_seq_dict)
     
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
@@ -589,11 +589,10 @@ if __name__ == '__main__':
       action='store_true'
   )
   parser.add_argument(
-      '--split_threshold',
+      '--filter_threshold',
       type=int,
-      default=1,
-      help='Threshold such that entities with observations no more than it would be filtered out.\
-        Only useful when split_warm is true.'
+      default=0,
+      help='Threshold such that entities with observations no more than it would be filtered out.'
   )
   parser.add_argument(
       '--cold_drug',      
