@@ -716,101 +716,54 @@ class RandomSplitter(Splitter):
     num_training = int(num_datapoints * frac_train)
     num_test = int(num_datapoints * frac_test)
     num_validation = num_datapoints - num_training - num_test    
-    element_id = 0
+    element_id = 0    
+    mol_entries = {} 
+    prot_entries = {}
+    mol_list = []
+    prot_list = []
+    entry_id_to_pair = {} 
+
+    for (X, _, _, _) in dataset.itersamples():      
+      mol = X[0]
+      if mol not in mol_entries:
+        mol_entries[mol] = set()
+        mol_list.append(mol)
+      mol_entries[mol].add(element_id)
     
-    # All the special splitting schemes here are for Cross-Validation ONLY.
-    if self.split_cold:
-      # We would need to split the dataset into cold-drugs and cold-targets.
-      drug_entries = {}
-      protein_entries = {}      
-      
-      for (X, _, _, _) in dataset.itersamples():
-        mol = X[0]
-        prot = X[1]
-        #prot = self.prot_seq_dict[prot]
-        prot = prot.get_sequence()
-        if mol not in drug_entries:
-          drug_entries[mol] = set()
-        if prot not in protein_entries:
-          protein_entries[prot] = set()
-        drug_entries[mol].add(element_id)
-        protein_entries[prot].add(element_id)
-        #pdb.set_trace()
-        element_id += 1      
-      num_drug_remain = len(drug_entries)
-      num_prot_remain = len(protein_entries)
-      
-      # all_drugs = set(drug_entries.keys())
-      # all_proteins = set(protein_entries.keys())
-      while True:
-        rand_num = random.uniform(0, num_drug_remain + num_prot_remain)
-        # Let the random number decide which entity to choose, drug or proteins.
-        entity_collection = drug_entries if rand_num <= num_drug_remain else protein_entries
-        
-        entity_chosen = random.choice(list(entity_collection.keys()))
-        print("num_training: ", num_training)
-        print("len(entries_for_training): ", len(entries_for_training))
-        print("length of new elements: ", len(entity_collection[entity_chosen] - 
-          entries_for_training))      
-        if len(entries_for_training.union(entity_collection[entity_chosen])) > num_training:
-          new_elements = entity_collection[entity_chosen].difference(entries_for_training)
-          num_to_choose = num_training - len(entries_for_training)
-          new_elements = set(random.sample(new_elements, num_to_choose))
-          entries_for_training = entries_for_training.union(new_elements)        
-        else:
-          # Only take union of the total size is within the limit.
-          entries_for_training = entries_for_training.union(entity_collection[entity_chosen])
-          del entity_collection[entity_chosen]
-          if rand_num <= num_drug_remain:
-            num_drug_remain = num_drug_remain - 1
-          else:
-            num_prot_remain = num_prot_remain - 1
-        if len(entries_for_training) >= num_training:
-          break
+      prot = X[1]
+      if prot not in prot_entries:
+        prot_entries[prot] = set()
+        prot_list.append(prot)        
+      prot_entries[prot].add(element_id)
 
-    elif self.split_warm:
-      assert self.threshold > 0
-      mol_entries = {} 
-      prot_entries = {}
-      mol_list = []
-      prot_list = []
-      entry_id_to_pair = {} 
-      for (X, _, _, _) in dataset.itersamples():       
-      
-        mol = X[0]
-        if mol not in mol_entries:
-          mol_entries[mol] = set()
-          mol_list.append(mol)
-        mol_entries[mol].add(element_id)
-      
-        prot = X[1]
-        if prot not in prot_entries:
-          prot_entries[prot] = set()
-          prot_list.append(prot)        
-        prot_entries[prot].add(element_id)
-
-        pair = (mol, prot)
-        entry_id_to_pair[element_id] = pair
-        #pdb.set_trace()
-        element_id += 1
+      pair = (mol, prot)
+      entry_id_to_pair[element_id] = pair
       #pdb.set_trace()
-      print("element_id: ", element_id)
-      print("len(mol_entries): ", len(mol_entries))
-      print("len(prot_entries): ", len(prot_entries))
+      element_id += 1      
+    print("element_id: ", element_id)
+    print("len(mol_entries): ", len(mol_entries))
+    print("len(prot_entries): ", len(prot_entries))
 
+    if self.threshold > 0:
+      # We need filtering the dataset.
       carry_on = True
       removed_entries = set()
       num_already_removed = 0
+      mol_set = set(mol_list)
+      prot_set = set(prot_list)
+      assert len(mol_set) == len(mol_list)
+      assert len(prot_set) == len(prot_list)
       while carry_on:
         counter = 0        
         for molecule in mol_list:
+          if molecule not in mol_set:
+            continue
           remain_this_mol_entries = mol_entries[molecule] - removed_entries
           if len(remain_this_mol_entries) <= self.threshold:
             counter += 1
-            mol_list.remove(molecule)
+            mol_set.remove(molecule)
             removed_entries.update(mol_entries[molecule])            
-            del mol_entries[molecule]
-            
+            del mol_entries[molecule]            
           else:
             mol_entries[molecule] = remain_this_mol_entries
         newly_removed = len(removed_entries) - num_already_removed
@@ -820,11 +773,12 @@ class RandomSplitter(Splitter):
         
         counter = 0
         for protein in prot_list:
+          if protein not in prot_set:
+            continue
           remain_this_prot_entries = prot_entries[protein] - removed_entries
-          if len(remain_this_prot_entries) <= self.threshold:
-            #carry_on = True
+          if len(remain_this_prot_entries) <= self.threshold:            
             counter += 1
-            prot_list.remove(protein)
+            prot_set.remove(protein)
             removed_entries.update(prot_entries[protein])
             del prot_entries[protein]
           else:
@@ -834,22 +788,55 @@ class RandomSplitter(Splitter):
         print("removing %d proteins with no more than %d entries, resulting in the \
           removal of %d entries." % (counter, self.threshold, newly_removed))
         carry_on = False
-        for molecule in mol_list:
+        for molecule in mol_set:
           remain_this_mol_entries = mol_entries[molecule] - removed_entries
           if len(remain_this_mol_entries) <= self.threshold:
             carry_on = True
             break
 
-      print("After the filtering")
-      print("Number of entries removed: ", len(removed_entries))
-      print("len(mol_entries): ", len(mol_entries))
-      print("len(prot_entries): ", len(prot_entries))
-      # Filtering is done. Now start splitting.
       all_entry_id = all_entry_id - removed_entries 
       num_datapoints = len(all_entry_id)
       num_training = int(num_datapoints * frac_train)     
       num_test = int(num_datapoints * frac_test)
-      num_validation = num_datapoints - num_training - num_test   
+      num_validation = num_datapoints - num_training - num_test
+      print("After the filtering")
+      print("Number of entries removed: ", len(removed_entries))
+      print("Number of entries remaining: ", len(all_entry_id))
+      print("len(mol_entries): ", len(mol_entries))
+      print("len(prot_entries): ", len(prot_entries))
+      mol_list = list(mol_set)   
+      prot_list = list(prot_set) 
+    
+    # All the special splitting schemes here are for Cross-Validation ONLY.
+    if self.split_cold:
+      # We would need to split the dataset into cold-drugs and cold-targets.      
+      while True:
+        num_drug_remain = len(mol_entries)
+        num_prot_remain = len(prot_entries)
+        rand_num = random.uniform(0, num_drug_remain + num_prot_remain)
+        # Let the random number decide which entity to choose, drug or proteins.
+        entity_collection = mol_entries if rand_num <= num_drug_remain else prot_entries        
+        entity_chosen = random.choice(list(entity_collection.keys()))
+        print("num_training: ", num_training)
+        print("len(entries_for_training): ", len(entries_for_training))
+        print("length of new elements: ", len(entity_collection[entity_chosen] - 
+          entries_for_training))     
+
+        if len(entries_for_training.union(entity_collection[entity_chosen])) > num_training:
+          new_elements = entity_collection[entity_chosen].difference(entries_for_training)
+          num_to_choose = num_training - len(entries_for_training)
+          new_elements = random.sample(new_elements, num_to_choose)
+          entries_for_training.update(new_elements)        
+        else:
+          # Only take union if the total size is within the limit.
+          entries_for_training.update(entity_collection[entity_chosen])
+          del entity_collection[entity_chosen]
+          
+        if len(entries_for_training) >= num_training:
+          break
+
+    elif self.split_warm:
+      assert self.threshold > 0
       
       entries_preserved = set()
       unassigned_entries = set()      
@@ -950,7 +937,7 @@ class RandomSplitter(Splitter):
           unassigned_entries.update(mol_entries[molecule] - entries_preserved - entries_for_training) 
           continue
         # Fill them randomly.
-        assert len(entries_preserved & entries_for_training) <= 0:             
+        assert len(entries_preserved & entries_for_training) <= 0             
         double_cold_prots = no_preserved_prots & no_train_prots            
         for protein in double_cold_prots:
           num_to_preserve = num_validation - len(entries_preserved)
@@ -963,8 +950,7 @@ class RandomSplitter(Splitter):
           else:
             entries_preserved.update(entry_to_write)
           assigned_prots.add(protein)
-        # num_to_preserve = num_validation - len(entries_preserved)
-        # num_to_train = num_training - len(entries_for_training)
+        
         no_preserved_prots = no_preserved_prots - assigned_prots
         no_train_prots = no_train_prots - assigned_prots
         
@@ -995,27 +981,13 @@ class RandomSplitter(Splitter):
       entries_for_training.update(random.sample(unassigned_entries, num_to_select))
 
     else:
-      entity_entries = {} 
-      # Splitting with regards to cold_drug or cold_target.           
-      for (X, _, _, _) in dataset.itersamples():       
-        if self.cold_drug:
-          mol = X[0]
-          if mol not in entity_entries:
-            entity_entries[mol] = set()
-          entity_entries[mol].add(element_id)
-        elif self.cold_target:
-          prot = X[1]
-          #prot = self.prot_seq_dict[prot]
-          prot = prot.get_sequence()
-          if prot not in entity_entries:
-            entity_entries[prot] = set()        
-          entity_entries[prot].add(element_id)
-        #pdb.set_trace()
-        element_id += 1
-      #pdb.set_trace()
-      print("element_id: ", element_id)
+      entity_entries = {}
+      if self.cold_drug:
+        entity_entries = mol_entries
+      elif self.cold_target:
+        entity_entries = prot_entries         
+      
       print("len(entity_entries): ", len(entity_entries))
-
       #num_entity_remain = len(entity_entries)      
       while True:        
         entity_chosen = random.choice(list(entity_entries.keys()))
@@ -1025,7 +997,7 @@ class RandomSplitter(Splitter):
           print("len(entries_for_training): ", len(entries_for_training))
           print("length of new elements: ", len(entity_entries[entity_chosen] - 
             entries_for_training))
-          #pdb.set_trace()               
+                      
         if len(entries_for_training.union(entity_entries[entity_chosen])) > num_training:
           new_elements = entity_entries[entity_chosen].difference(entries_for_training)
           num_to_choose = num_training - len(entries_for_training)
