@@ -58,7 +58,7 @@ class Splitter(object):
     """
 
   def __init__(self, verbose=False, split_cold=False, cold_drug=False, cold_target=False,
-    prot_seq_dict=None, split_warm=False, threshold=1):
+    prot_seq_dict=None, split_warm=False, threshold=0):
     """Creates splitter object."""
     self.verbose = verbose
     self.split_cold = split_cold
@@ -120,6 +120,7 @@ class Splitter(object):
           frac_valid=1 - frac_fold,
           frac_test=0)
       self.split_warm = False # Only useful in the first time.
+      self.threshold = 0 # Filtering is done after the first split.
       cv_dataset = rem_dataset.select(fold_inds, select_dir=cv_dir)
       cv_datasets.append(cv_dataset)
       rem_dataset = rem_dataset.select(rem_inds)
@@ -703,13 +704,14 @@ class RandomSplitter(Splitter):
 
     assert (self.split_cold + self.cold_drug + self.cold_target + self.split_warm) <= 1
     
-    if not (self.split_cold or self.cold_drug or self.cold_target or self.split_warm):
+    if not (self.split_cold or self.cold_drug or self.cold_target or 
+      self.split_warm) and self.threshold <= 0:
       train_cutoff = int(frac_train * num_datapoints)
       valid_cutoff = int((frac_train + frac_valid) * num_datapoints)
       shuffled = np.random.permutation(range(num_datapoints))
       return (shuffled[:train_cutoff], shuffled[train_cutoff:valid_cutoff],
               shuffled[valid_cutoff:])
-    
+
     #assert self.prot_seq_dict is not None
     all_entry_id = set(range(num_datapoints))
     entries_for_training = set()
