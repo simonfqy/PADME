@@ -121,26 +121,43 @@ hps['xgb'] = {
     'early_stopping_rounds': 100
 }
 
+# Original parameter setting. Commented out temporarily.
+# hps['tf_regression'] = {
+#     'layer_sizes': [1000, 1000],
+#     'weight_init_stddevs': [0.02, 0.02],
+#     'bias_init_consts': [1., 1.],
+#     'dropouts': [0.25, 0.25],
+#     #'dropout_prob': 0.105,
+#     'dropout_prob': 0.262,
+#     'penalty': 0.0005,
+#     'penalty_type': 'l2',
+#     #'batch_size': 128,
+#     'batch_size': 155,
+#     'nb_epoch': 100,
+#     #'nb_epoch': 66,
+#     #'nb_epoch': 3,
+#     #'learning_rate': 0.0008,
+#     'learning_rate': 0.000311,
+#     #'num_dense_layer': 3,
+#     'num_dense_layer': 2,
+#     #'dense_cmb_layer_size': 512
+#     'dense_cmb_layer_size': 1211
+# }
+
+# Only for the cross-validation of Davis data. Should comment out after use.
 hps['tf_regression'] = {
     'layer_sizes': [1000, 1000],
     'weight_init_stddevs': [0.02, 0.02],
     'bias_init_consts': [1., 1.],
-    'dropouts': [0.25, 0.25],
-    #'dropout_prob': 0.105,
-    'dropout_prob': 0.262,
-    'penalty': 0.0005,
+    'dropouts': [0.25, 0.25],    
+    'dropout_prob': 0.6110313697744081,
+    'penalty': 0.00041806664704094386,
     'penalty_type': 'l2',
-    #'batch_size': 128,
-    'batch_size': 155,
-    'nb_epoch': 100,
-    #'nb_epoch': 66,
-    #'nb_epoch': 3,
-    #'learning_rate': 0.0008,
-    'learning_rate': 0.000311,
-    #'num_dense_layer': 3,
+    'batch_size': 241,
+    'nb_epoch': 96,
+    'learning_rate': 0.0002716797985777158,
     'num_dense_layer': 2,
-    #'dense_cmb_layer_size': 512
-    'dense_cmb_layer_size': 1211
+    'dense_cmb_layer_size': 1835
 }
 
 hps['tf_regression_ft'] = {
@@ -158,24 +175,38 @@ hps['tf_regression_ft'] = {
 hps['rf_regression'] = {'n_estimators': 500}
 hps['krr'] = {'alpha': 1e-3}
 hps['krr_ft'] = {'alpha': 1e-3}
+# This is the original parameter setting. Commented out temporarily.
+# hps['graphconvreg'] = {
+#     'batch_size': 128,
+#     #'batch_size': 86, 
+#     'nb_epoch': 100,
+#     #'nb_epoch': 3,
+#     #'nb_epoch': 63,
+#     #'learning_rate': 0.0002,
+#     'learning_rate': 9.789365954742421e-05,
+#     'n_filters': 128,
+#     #'n_filters': 160,
+#     'n_fully_connected_nodes': 256,
+#     #'n_fully_connected_nodes': 492,
+#     'dropout_prob': 0.1,
+#     #'dropout_prob': 0.03567783932490167,
+#     'num_dense_layer': 3,
+#     #'num_dense_layer': 8,
+#     'dense_cmb_layer_size': 512,
+#     #'dense_cmb_layer_size': 1317,
+#     'seed': 123
+# }
+
+# This is for Davis dataset cross-validation only. 
 hps['graphconvreg'] = {
-    'batch_size': 128,
-    #'batch_size': 86, 
+    'batch_size': 49,
     'nb_epoch': 100,
-    #'nb_epoch': 3,
-    #'nb_epoch': 63,
-    #'learning_rate': 0.0002,
-    'learning_rate': 9.789365954742421e-05,
-    'n_filters': 128,
-    #'n_filters': 160,
-    'n_fully_connected_nodes': 256,
-    #'n_fully_connected_nodes': 492,
-    'dropout_prob': 0.1,
-    #'dropout_prob': 0.03567783932490167,
+    'learning_rate': 0.00012185544700324641,
+    'n_filters': 270,
+    'n_fully_connected_nodes': 706,
+    'dropout_prob': 0.0823982383676165,
     'num_dense_layer': 3,
-    #'num_dense_layer': 8,
-    'dense_cmb_layer_size': 512,
-    #'dense_cmb_layer_size': 1317,
+    'dense_cmb_layer_size': 1164,
     'seed': 123
 }
 
