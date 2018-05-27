@@ -114,6 +114,7 @@ class Splitter(object):
       # to k-1.
       frac_fold = 1. / (k - fold)
       train_dir, cv_dir = directories[2 * fold], directories[2 * fold + 1]
+      #pdb.set_trace()
       fold_inds, rem_inds, _ = self.split(
           rem_dataset,
           frac_train=frac_fold,
@@ -706,12 +707,16 @@ class RandomSplitter(Splitter):
     
     if not (self.split_cold or self.cold_drug or self.cold_target or 
       self.split_warm) and self.threshold <= 0:
+      # This is the case where you are not performing filtering and doing some general random
+      # splitting.
       train_cutoff = int(frac_train * num_datapoints)
       valid_cutoff = int((frac_train + frac_valid) * num_datapoints)
       shuffled = np.random.permutation(range(num_datapoints))
       return (shuffled[:train_cutoff], shuffled[train_cutoff:valid_cutoff],
               shuffled[valid_cutoff:])
 
+    # Only execute when need to perform filtering or doing some specific splitting.
+    # Note that this also applies to the warm splitting of cross-validation after the initial split.
     #assert self.prot_seq_dict is not None
     all_entry_id = set(range(num_datapoints))
     entries_for_training = set()
@@ -740,7 +745,6 @@ class RandomSplitter(Splitter):
 
       pair = (mol, prot)
       entry_id_to_pair[element_id] = pair
-      #pdb.set_trace()
       element_id += 1      
     print("element_id: ", element_id)
     print("len(mol_entries): ", len(mol_entries))
@@ -982,7 +986,7 @@ class RandomSplitter(Splitter):
       assert len(unassigned_entries) >= num_to_select
       entries_for_training.update(random.sample(unassigned_entries, num_to_select))
 
-    else:
+    elif self.cold_drug or self.cold_target:
       entity_entries = {}
       if self.cold_drug:
         entity_entries = mol_entries
@@ -990,7 +994,7 @@ class RandomSplitter(Splitter):
         entity_entries = prot_entries         
       
       print("len(entity_entries): ", len(entity_entries))
-      #num_entity_remain = len(entity_entries)      
+       
       while True:        
         entity_chosen = random.choice(list(entity_entries.keys()))
         
@@ -1012,6 +1016,9 @@ class RandomSplitter(Splitter):
           
         if len(entries_for_training) >= num_training:
           break
+
+    else:
+      entries_for_training = set(random.sample(all_entry_id, num_training))
 
     remaining_entries = all_entry_id.difference(entries_for_training)
     entries_for_validation = set(random.sample(remaining_entries, num_validation))
