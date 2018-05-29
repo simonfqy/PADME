@@ -177,7 +177,7 @@ class Model(BaseEstimator):
 
   def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False, 
     no_concordance_index=False, plot=False, is_training_set=False, tasks=None, 
-    model_name=None):
+    model_name=None, no_r2=False):
     """
     Evaluates the performance of this model on specified dataset.
 
@@ -201,11 +201,11 @@ class Model(BaseEstimator):
       tasks=tasks, model_name=model_name)
     if not per_task_metrics:
       scores = evaluator.compute_model_performance(metrics, 
-        no_concordance_index=no_concordance_index, plot=plot)
+        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
-          metrics, per_task_metrics=per_task_metrics, 
+          metrics, per_task_metrics=per_task_metrics, no_r2=no_r2,
           no_concordance_index=no_concordance_index, plot=plot)
       return scores, per_task_scores
 
