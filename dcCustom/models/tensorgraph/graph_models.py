@@ -113,28 +113,32 @@ class WeaveTensorGraph(TensorGraph):
         in_layers=[batch_norm1, self.atom_split])
     weave_gather = Dropout(self.dropout_prob, in_layers = weave_gather)
     prot_desc = Dropout(self.dropout_prob, in_layers = self.prot_desc)
-    combined = Concat(in_layers=[weave_gather, prot_desc])
-    #combined = Dropout(self.dropout_prob, in_layers = combined)
-    dense2 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[combined])
-    batch_norm2 = BatchNormalization(epsilon=1e-5, in_layers=[dense2])
-    #batch_norm2 = BatchNorm(in_layers=[dense2])
-    #dropout2 = Dropout(self.dropout_prob, in_layers = batch_norm2)
-    dense3 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[batch_norm2])
-    batch_norm3 = BatchNormalization(epsilon=1e-5, in_layers=[dense3])
-    #batch_norm3 = BatchNorm(in_layers=[dense3])
-    #dropout3 = Dropout(self.dropout_prob, in_layers = batch_norm3)
-    dense4 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[batch_norm3])
-    batch_norm4 = BatchNormalization(epsilon=1e-5, in_layers=[dense4])
-    #batch_norm4 = BatchNorm(in_layers=[dense4])
-    #dropout4 = Dropout(self.dropout_prob, in_layers = batch_norm4)
-    #pdb.set_trace()
+    recent = Concat(in_layers=[weave_gather, prot_desc])
+    # #combined = Dropout(self.dropout_prob, in_layers = combined)
+    # dense2 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[combined])
+    # batch_norm2 = BatchNormalization(epsilon=1e-5, in_layers=[dense2])
+    # #batch_norm2 = BatchNorm(in_layers=[dense2])
+    # #dropout2 = Dropout(self.dropout_prob, in_layers = batch_norm2)
+    # dense3 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[batch_norm2])
+    # batch_norm3 = BatchNormalization(epsilon=1e-5, in_layers=[dense3])
+    # #batch_norm3 = BatchNorm(in_layers=[dense3])
+    # #dropout3 = Dropout(self.dropout_prob, in_layers = batch_norm3)
+    # dense4 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[batch_norm3])
+    # batch_norm4 = BatchNormalization(epsilon=1e-5, in_layers=[dense4])
+    # #batch_norm4 = BatchNorm(in_layers=[dense4])
+    # #dropout4 = Dropout(self.dropout_prob, in_layers = batch_norm4)
+    # #pdb.set_trace()
+    for _ in range(self.num_dense_layer):
+      dense_combined = Dense(out_channels=self.dense_cmb_layer_size, activation_fn=tf.nn.relu,
+        in_layers=[recent])
+      recent = BatchNormalization(epsilon=1e-5, in_layers=[dense_combined])
 
     costs = []
     self.labels_fd = []
     for task in range(self.n_tasks):
       if self.mode == "classification":
         classification = Dense(
-            out_channels=2, activation_fn=None, in_layers=[batch_norm4])
+            out_channels=2, activation_fn=None, in_layers=[recent])
         softmax = SoftMax(in_layers=[classification])
         self.add_output(softmax)
 
@@ -144,7 +148,7 @@ class WeaveTensorGraph(TensorGraph):
         costs.append(cost)
       if self.mode == "regression":
         regression = Dense(
-            out_channels=1, activation_fn=None, in_layers=[batch_norm4])
+            out_channels=1, activation_fn=None, in_layers=[recent])
         self.add_output(regression)
 
         label = Label(shape=(None, 1))
@@ -931,10 +935,9 @@ class GraphConvTensorGraph(TensorGraph):
         results.append(result[:n_samples])
       return np.concatenate(results, axis=0)
 
-  # TODO: need to change this function to allow plotting.
   def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False,
     no_concordance_index=False, plot=False, is_training_set=False, tasks=None, 
-    model_name=None):
+    model_name=None, no_r2=False):
     if not self.built:
       self.build()
     return self.evaluate_generator(
@@ -946,6 +949,7 @@ class GraphConvTensorGraph(TensorGraph):
         labels=self.my_labels,
         weights=[self.my_task_weights],
         per_task_metrics=per_task_metrics,
+        no_r2=no_r2,
         no_concordance_index=no_concordance_index,
         plot=plot,
         is_training_set=is_training_set,

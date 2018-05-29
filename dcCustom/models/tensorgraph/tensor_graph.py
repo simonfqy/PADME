@@ -132,6 +132,7 @@ class TensorGraph(Model):
           metric=None,
           direction=None,
           early_stopping=True,
+          no_r2=False,
           evaluate_freq = 3, # Number of training epochs before evaluating
           # for early stopping.
           patience = 3,
@@ -217,12 +218,12 @@ class TensorGraph(Model):
         saver = tf.train.Saver(
               max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
         if not per_task_metrics:
-          valid_score = self.evaluate(valid_dataset, metric, transformers, 
+          valid_score = self.evaluate(valid_dataset, metric, transformers, no_r2=no_r2,
             per_task_metrics=per_task_metrics, tasks=tasks, model_name=model_name) 
             
         else:
           valid_score, per_task_sc_val = self.evaluate(valid_dataset, metric,
-            transformers, per_task_metrics=per_task_metrics, tasks=tasks, 
+            transformers, per_task_metrics=per_task_metrics, tasks=tasks, no_r2=no_r2,
             model_name=model_name)
 
         val_sc = 0
@@ -240,6 +241,8 @@ class TensorGraph(Model):
                   per_task_sc_val[composite_mtc_name])]
 
             if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
+              if no_r2:
+                continue
               val_sc += -0.5 * valid_score[composite_mtc_name]
               if per_task_metrics:
                 per_task_sc = [base - 0.5 * incr for base, incr in zip(per_task_sc, 
@@ -847,6 +850,7 @@ class TensorGraph(Model):
                          outputs=None,
                          weights=[],
                          per_task_metrics=False,
+                         no_r2=False,
                          no_concordance_index=False,
                          plot=False,
                          is_training_set=False,
@@ -874,12 +878,12 @@ class TensorGraph(Model):
         model_name=model_name)
     if not per_task_metrics:
       scores = evaluator.compute_model_performance(metrics, 
-        no_concordance_index=no_concordance_index, plot=plot)
+        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
         metrics, per_task_metrics=per_task_metrics, 
-        no_concordance_index=no_concordance_index, plot=plot)
+        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
       return scores, per_task_scores
 
   def get_layer_variables(self, layer):
