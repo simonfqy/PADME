@@ -99,62 +99,6 @@ def mae_score(y_true, y_pred):
   """Computes MAE."""
   return mean_absolute_error(y_true, y_pred)
 
-def short_CI(y_true, y_pred):
-  #print("Using short_CI for length: ", len(y_true))
-  y_true_comb = np.array(list(itertools.combinations(y_true, 2)))
-  y_pred_comb = np.array(list(itertools.combinations(y_pred, 2)))
-  y_true_diff = np.sign(y_true_comb[:, 0] - y_true_comb[:, 1])
-  y_pred_diff = np.sign(y_pred_comb[:, 0] - y_pred_comb[:, 1])
-  valid_pairs = y_true_diff != 0.0
-  raw_comparison = (y_true_diff * y_pred_diff + 1)/2
-  scores = raw_comparison * valid_pairs
-  return sum(scores)/sum(valid_pairs)
-
-def inner_loop(i, y_true_1, y_pred_1, y_true, y_pred):
-  y_true_sublist = y_true[(i+1):len(y_true)]
-  y_pred_sublist = y_pred[(i+1):len(y_pred)]
-  valid_pairs = y_true_sublist != y_true_1
-  y_true_diff = np.sign(y_true_sublist - y_true_1)
-  y_pred_diff = np.sign(y_pred_sublist - y_pred_1)
-  
-  raw_comparison = (y_true_diff * y_pred_diff + 1)/2
-  scores = raw_comparison * valid_pairs
-  summ = sum(scores)
-  total_pairs = sum(valid_pairs)
-  return summ, total_pairs
-
-def concordance_index2(y_true, y_pred):
-  assert len(y_true) == len(y_pred)
-  # I found that short_CI is better when length is smaller than 350.
-  if len(y_true) <= 360:
-    return short_CI(y_true, y_pred)
-
-  total_pairs = 0
-  sum_score = 0.0
-  CPU_COUNT = int(0.7*os.cpu_count())
-
-  with Pool(processes=CPU_COUNT) as pool:
-    i = 0
-    while i < len(y_true) - 1:
-      #k = i % CPU_COUNT
-      if i == 0:
-        procs = []
-        results = []
-      y_true_1 = y_true[i]
-      y_pred_1 = y_pred[i]
-
-      procs.append(pool.apply_async(inner_loop, [i, y_true_1, y_pred_1, y_true, y_pred]))
-      i += 1
-      #if k == CPU_COUNT-1 or i == len(y_true) - 1:
-      if i == len(y_true) - 1:
-        results = [proc.get() for proc in procs]
-        summ = [res[0] for res in results]
-        pairs = [res[1] for res in results]
-        sum_score += sum(summ)
-        total_pairs += sum(pairs)
-        
-  return sum_score/total_pairs
-
 def concordance_index(y_true, y_pred):
   return cindex(y_true, y_pred)
 
