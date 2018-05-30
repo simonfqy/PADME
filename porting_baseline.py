@@ -28,6 +28,7 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
     file_name = "restructured_bin.csv"
 
   smiles_to_pubchem_id = {}
+  duplicated_drugs = set()
   pcid_name = 'cid' # stands for "PubChem ID"
   cmpd_file_name = "compound_cids.txt"
   if re.search('davis', dataset_nm, re.I):
@@ -38,10 +39,22 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
         words = line.split()
         if words[1] not in smiles_to_pubchem_id:
           smiles_to_pubchem_id[words[1]] = words[0]
+
   elif re.search('metz', dataset_nm, re.I):
     data_dir = "metz_data/"
     pcid_name = 'sid'
     cmpd_file_name = "compound_sids.txt"
+    df = pd.read_csv(data_dir + 'Metz_interaction.csv', header = 0, index_col=0, usecols=range(3))
+    for row in df.itertuples():
+      #pdb.set_trace()      
+      if row[2] != row[2]:
+        continue
+      if row[2] not in smiles_to_pubchem_id:
+        smiles_to_pubchem_id[row[2]] = str(int(row[1]))        
+      # else:
+      #   duplicated_drugs.add(row[2])
+    print("length of dictionary smiles_to_pubchem_id: ", len(smiles_to_pubchem_id))
+
   elif re.search('kiba', dataset_nm, re.I):
     data_dir = "KIBA_data/"
   
@@ -121,6 +134,7 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
           pair_to_value[pair] = y_b[0]
         dataset_length += 1
 
+  print("len(drug_list): ", len(drug_list))
   assert len(pair_to_fold) == dataset_length
   # Now we need to construct a compound_cids.txt file according to the order in drug_list.
   with open(data_dir + cmpd_file_name, 'w') as f:
@@ -157,9 +171,12 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
     writer.writeheader()
     for drug_mol in drug_list:
       drug_ind = drug_mapping[drug_mol]
-      for protein in prot_list:
-        prot_ind = prot_mapping[protein]
+      for protein in prot_list:        
         pair = (drug_mol, protein)
+        if pair not in pair_to_value:
+          assert pair not in pair_to_fold
+          continue
+        prot_ind = prot_mapping[protein]
         value = pair_to_value[pair]
         fold_ind = pair_to_fold[pair]
         writer.writerow({'drug': drug_ind, 'target': prot_ind, 'value': value,
@@ -169,5 +186,5 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
   print("Processing took %f seconds." % (time_end - time_start))
 
 if __name__ == '__main__':
-  parse_data(featurizer = 'ECFP', split_warm=True)
-  #parse_data(dataset_nm='metz', featurizer = 'ECFP', split_warm=True)
+  #parse_data(featurizer = 'ECFP', split_warm=True)
+  parse_data(dataset_nm='metz', featurizer = 'ECFP', split_warm=True)
