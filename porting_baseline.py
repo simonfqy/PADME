@@ -23,13 +23,10 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
   assert (predict_cold + cold_drug + cold_target + split_warm) <= 1
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    file_name = "restructured.csv"
-  elif mode == 'classification':
-    file_name = "restructured_bin.csv"
 
-  smiles_to_pubchem_id = {}
+  smiles_to_some_id = {}
   duplicated_drugs = set()
-  pcid_name = 'cid' # stands for "PubChem ID"
+  some_id_name = 'cid'
   cmpd_file_name = "compound_cids.txt"
   if re.search('davis', dataset_nm, re.I):
     data_dir = "davis_data/"    
@@ -37,29 +34,38 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
       data = f.readlines()
       for line in data:
         words = line.split()
-        if words[1] not in smiles_to_pubchem_id:
-          smiles_to_pubchem_id[words[1]] = words[0]
+        if words[1] not in smiles_to_some_id:
+          smiles_to_some_id[words[1]] = words[0]
 
   elif re.search('metz', dataset_nm, re.I):
     data_dir = "metz_data/"
-    pcid_name = 'sid'
+    some_id_name = 'sid'
     cmpd_file_name = "compound_sids.txt"
     df = pd.read_csv(data_dir + 'Metz_interaction.csv', header = 0, index_col=0, usecols=range(3))
-    for row in df.itertuples():
-      #pdb.set_trace()      
+    for row in df.itertuples():         
       if row[2] != row[2]:
         continue
-      if row[2] not in smiles_to_pubchem_id:
-        smiles_to_pubchem_id[row[2]] = str(int(row[1]))        
-      # else:
-      #   duplicated_drugs.add(row[2])
-    print("length of dictionary smiles_to_pubchem_id: ", len(smiles_to_pubchem_id))
+      if row[2] not in smiles_to_some_id:
+        smiles_to_some_id[row[2]] = str(int(row[1]))        
+      
+    print("length of dictionary smiles_to_some_id: ", len(smiles_to_some_id))
 
   elif re.search('kiba', dataset_nm, re.I):
     data_dir = "KIBA_data/"
+    some_id_name = "CHEMBL_ID"
+    cmpd_file_name = "Chembl_ids.txt"
+    df = pd.read_csv(data_dir + 'Smiles_bio_results.csv', header = 0, index_col=0, usecols=range(2))
+    for row in df.itertuples():
+      if row[1] != row[1]:
+        continue
+      if row[1] not in smiles_to_some_id:
+        smiles_to_some_id[row[1]] = row[0]
+    pdb.set_trace()
   
   delim = "/"
-  # TODO: filtering is needed to be added as a suffix.
+  
+  if filter_threshold > 0:
+    delim = "_filtered" + delim
   if predict_cold:
     delim = "_cold" + delim
   elif split_warm:
@@ -138,12 +144,12 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
   assert len(pair_to_fold) == dataset_length
   # Now we need to construct a compound_cids.txt file according to the order in drug_list.
   with open(data_dir + cmpd_file_name, 'w') as f:
-    pubchem_id_list = []
+    some_id_list = []
     for drug_mol in drug_list:
       drug_smiles = drug_mol.smiles
-      pubchem_id = smiles_to_pubchem_id[drug_smiles]
-      pubchem_id_list.append(pubchem_id)
-    f.write('\n'.join(pubchem_id_list))
+      some_id = smiles_to_some_id[drug_smiles]
+      some_id_list.append(some_id)
+    f.write('\n'.join(some_id_list))
 
   with open(data_dir + "prot_info.csv", 'w', newline='') as csvfile:
     fieldnames = ['name', 'sequence', 'index']
@@ -156,14 +162,14 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
       writer.writerow({'name': prot_name, 'sequence': prot_seq, 'index': ind})
 
   with open(data_dir + "drug_info.csv", 'w', newline='') as csvfile:
-    fieldnames = [pcid_name, 'smiles', 'index']
+    fieldnames = [some_id_name, 'smiles', 'index']
     writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
     writer.writeheader()
     for drug_mol in drug_list:
       drug_smiles = drug_mol.smiles
-      pubchem_id = smiles_to_pubchem_id[drug_smiles]
+      some_id = smiles_to_some_id[drug_smiles]
       drug_ind = drug_mapping[drug_mol]
-      writer.writerow({pcid_name: pubchem_id, 'smiles': drug_smiles, 'index': drug_ind})
+      writer.writerow({some_id_name: some_id, 'smiles': drug_smiles, 'index': drug_ind})
 
   with open(data_dir + "triplet_split.csv", 'w', newline='') as csvfile:
     fieldnames = ['drug', 'target', 'value', 'fold']
@@ -187,4 +193,5 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
 
 if __name__ == '__main__':
   #parse_data(featurizer = 'ECFP', split_warm=True)
-  parse_data(dataset_nm='metz', featurizer = 'ECFP', split_warm=True)
+  #parse_data(dataset_nm='metz', featurizer = 'ECFP', split_warm=True)
+  parse_data(dataset_nm='kiba', featurizer = 'ECFP', split_warm=True, filter_threshold=6)
