@@ -5,10 +5,7 @@ from __future__ import unicode_literals
 
 import numpy as np
 import pandas as pd
-import os
-import time
 import sys
-import pwd
 import pdb
 import csv
 
@@ -18,7 +15,7 @@ with open("Chembl_ids.txt", 'r') as f:
   for line in data:
     line = line.split()[0]    
     chembl_id_list.append(line)
-#pdb.set_trace()
+
 chembl_to_cid = {}
 with open("chembl_to_cids.txt", 'r') as f:
   data = f.readlines()
