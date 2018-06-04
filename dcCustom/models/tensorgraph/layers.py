@@ -7,8 +7,9 @@ from copy import deepcopy
 import tensorflow as tf
 import numpy as np
 
-from deepchem.models.tensorgraph import model_ops, initializations, regularizers, activations
+from dcCustom.nn import model_ops, initializations, regularizers, activations
 import math
+import pdb
 
 
 class Layer(object):
@@ -1184,52 +1185,6 @@ class SoftMax(Layer):
     return out_tensor
 
 
-class Sigmoid(Layer):
-  """ Compute the sigmoid of input: f(x) = sigmoid(x)
-  Only one input is allowed, output will have the same shape as input
-  """
-
-  def __init__(self, in_layers=None, **kwargs):
-    super(Sigmoid, self).__init__(in_layers, **kwargs)
-    try:
-      self._shape = tuple(self.in_layers[0].shape)
-    except:
-      pass
-
-  def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    inputs = self._get_input_tensors(in_layers)
-    if len(inputs) != 1:
-      raise ValueError("Sigmoid must have a single input layer.")
-    parent = inputs[0]
-    out_tensor = tf.nn.sigmoid(parent)
-    if set_tensors:
-      self.out_tensor = out_tensor
-    return out_tensor
-
-
-class ReLU(Layer):
-  """ Compute the relu activation of input: f(x) = relu(x)
-  Only one input is allowed, output will have the same shape as input
-  """
-
-  def __init__(self, in_layers=None, **kwargs):
-    super(ReLU, self).__init__(in_layers, **kwargs)
-    try:
-      self._shape = tuple(self.in_layers[0].shape)
-    except:
-      pass
-
-  def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    inputs = self._get_input_tensors(in_layers)
-    if len(inputs) != 1:
-      raise ValueError("ReLU must have a single input layer.")
-    parent = inputs[0]
-    out_tensor = tf.nn.relu(parent)
-    if set_tensors:
-      self.out_tensor = out_tensor
-    return out_tensor
-
-
 class Concat(Layer):
 
   def __init__(self, in_layers=None, axis=1, **kwargs):
@@ -1570,34 +1525,7 @@ class SoftMaxCrossEntropy(Layer):
     if len(inputs) != 2:
       raise ValueError()
     labels, logits = inputs[0], inputs[1]
-    out_tensor = tf.nn.softmax_cross_entropy_with_logits_v2(
-        logits=logits, labels=labels)
-    if set_tensors:
-      self.out_tensor = out_tensor
-    return out_tensor
-
-
-class SigmoidCrossEntropy(Layer):
-  """ Compute the sigmoid cross entropy of inputs: [labels, logits]
-  `labels` hold the binary labels(with no axis of n_classes),
-  `logits` hold the log probabilities for positive class(label=1),
-  `labels` and `logits` should have same shape and type.
-  Output will have the same shape as `logits`
-  """
-
-  def __init__(self, in_layers=None, **kwargs):
-    super(SigmoidCrossEntropy, self).__init__(in_layers, **kwargs)
-    try:
-      self._shape = self.in_layers[1].shape
-    except:
-      pass
-
-  def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    inputs = self._get_input_tensors(in_layers, True)
-    if len(inputs) != 2:
-      raise ValueError()
-    labels, logits = inputs[0], inputs[1]
-    out_tensor = tf.nn.sigmoid_cross_entropy_with_logits(
+    out_tensor = tf.nn.softmax_cross_entropy_with_logits(
         logits=logits, labels=labels)
     if set_tensors:
       self.out_tensor = out_tensor
@@ -2468,44 +2396,43 @@ class GraphGather(Layer):
     super(GraphGather, self).__init__(**kwargs)
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    with tf.device('/cpu'):
-      inputs = self._get_input_tensors(in_layers)
+    inputs = self._get_input_tensors(in_layers)
 
-      # x = [atom_features, deg_slice, membership, deg_adj_list placeholders...]
-      atom_features = inputs[0]
+    # x = [atom_features, deg_slice, membership, deg_adj_list placeholders...]
+    atom_features = inputs[0]
 
-      # Extract graph topology
-      membership = inputs[2]
+    # Extract graph topology
+    membership = inputs[2]
 
-      # Perform the mol gather
+    # Perform the mol gather
 
-      assert self.batch_size > 1, "graph_gather requires batches larger than 1"
+    assert self.batch_size > 1, "graph_gather requires batches larger than 1"
 
-      # Obtain the partitions for each of the molecules
-      activated_par = tf.dynamic_partition(atom_features, membership,
-                                           self.batch_size)
+    # Obtain the partitions for each of the molecules
+    activated_par = tf.dynamic_partition(atom_features, membership,
+                                         self.batch_size)
 
-      # Sum over atoms for each molecule
-      sparse_reps = [
-          tf.reduce_mean(activated, 0, keepdims=True)
-          for activated in activated_par
-      ]
-      max_reps = [
-          tf.reduce_max(activated, 0, keepdims=True)
-          for activated in activated_par
-      ]
+    # Sum over atoms for each molecule
+    sparse_reps = [
+        tf.reduce_mean(activated, 0, keep_dims=True)
+        for activated in activated_par
+    ]
+    max_reps = [
+        tf.reduce_max(activated, 0, keep_dims=True)
+        for activated in activated_par
+    ]
 
-      # Get the final sparse representations
-      sparse_reps = tf.concat(axis=0, values=sparse_reps)
-      max_reps = tf.concat(axis=0, values=max_reps)
-      mol_features = tf.concat(axis=1, values=[sparse_reps, max_reps])
+    # Get the final sparse representations
+    sparse_reps = tf.concat(axis=0, values=sparse_reps)
+    max_reps = tf.concat(axis=0, values=max_reps)
+    mol_features = tf.concat(axis=1, values=[sparse_reps, max_reps])
 
-      if self.activation_fn is not None:
-        mol_features = self.activation_fn(mol_features)
-      out_tensor = mol_features
-      if set_tensors:
-        self.out_tensor = out_tensor
-      return out_tensor
+    if self.activation_fn is not None:
+      mol_features = self.activation_fn(mol_features)
+    out_tensor = mol_features
+    if set_tensors:
+      self.out_tensor = out_tensor
+    return out_tensor
 
 
 class LSTMStep(Layer):
@@ -2903,7 +2830,12 @@ class BatchNorm(Layer):
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
     inputs = self._get_input_tensors(in_layers)
     parent_tensor = inputs[0]
-    out_tensor = tf.layers.batch_normalization(parent_tensor)
+    training_flag = tf.equal(tf.constant(1.0, dtype=tf.float32), kwargs['training'])
+    #training_flag = kwargs['training'] 
+    out_tensor = tf.layers.batch_normalization(parent_tensor, training=training_flag)
+    #out_tensor = tf.layers.batch_normalization(parent_tensor)
+    #pdb.set_trace()
+    self.tensorboard = True
     if set_tensors:
       self.out_tensor = out_tensor
     return out_tensor
@@ -2951,14 +2883,6 @@ class BatchNormalization(Layer):
     if set_tensors:
       self.out_tensor = out_tensor
     return out_tensor
-
-  def none_tensors(self):
-    gamma, beta, out_tensor = self.gamma, self.beta, self.out_tensor
-    self.gamma, self.beta, self.out_tensor = None, None, None
-    return gamma, beta, out_tensor
-
-  def set_tensors(self, tensor):
-    self.gamma, self.beta, self.out_tensor = tensor
 
 
 class WeightedError(Layer):

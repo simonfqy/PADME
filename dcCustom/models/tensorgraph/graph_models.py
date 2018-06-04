@@ -3,22 +3,25 @@ import collections
 import numpy as np
 import six
 import tensorflow as tf
+import pdb
 
-from deepchem.data import NumpyDataset
+from dcCustom.data import NumpyDataset
 from deepchem.feat.graph_features import ConvMolFeaturizer
 from deepchem.feat.mol_graphs import ConvMol
 from deepchem.metrics import to_one_hot
-from deepchem.models.tensorgraph.graph_layers import WeaveGather, \
+from dcCustom.models.tensorgraph.graph_layers import \
     DTNNEmbedding, DTNNStep, DTNNGather, DAGLayer, \
     DAGGather, DTNNExtract, MessagePassing, SetGather
-from deepchem.models.tensorgraph.graph_layers import WeaveLayerFactory
-from deepchem.models.tensorgraph.layers import Dense, SoftMax, \
-    SoftMaxCrossEntropy, GraphConv, BatchNorm, \
-    GraphPool, GraphGather, WeightedError, Dropout, BatchNormalization, Stack, Flatten, GraphCNN, GraphCNNPool
-from deepchem.models.tensorgraph.layers import L2Loss, Label, Weights, Feature
-from deepchem.models.tensorgraph.tensor_graph import TensorGraph
+from dcCustom.models.tensorgraph.graph_layers import WeaveLayerFactory, WeaveGather
+from dcCustom.models.tensorgraph.layers import Dense, SoftMax, \
+    SoftMaxCrossEntropy, GraphConv, Concat, Dropout, \
+    GraphPool, GraphGather, WeightedError, BatchNormalization, Stack, \
+    Flatten, GraphCNN, GraphCNNPool
+from dcCustom.models.tensorgraph.layers import BatchNorm
+from dcCustom.models.tensorgraph.layers import L2Loss, Label, Weights, Feature
+from dcCustom.models.tensorgraph.tensor_graph import TensorGraph
 from deepchem.trans import undo_transforms
-
+from dcCustom.feat import Protein
 
 class WeaveTensorGraph(TensorGraph):
 
@@ -27,7 +30,7 @@ class WeaveTensorGraph(TensorGraph):
                n_atom_feat=75,
                n_pair_feat=14,
                n_hidden=50,
-               n_graph_feat=128,
+               n_graph_feat=128,               
                mode="classification",
                **kwargs):
     """
@@ -52,6 +55,7 @@ class WeaveTensorGraph(TensorGraph):
     self.n_hidden = n_hidden
     self.n_graph_feat = n_graph_feat
     self.mode = mode
+    
     super(WeaveTensorGraph, self).__init__(**kwargs)
     self.build_graph()
 
@@ -64,6 +68,9 @@ class WeaveTensorGraph(TensorGraph):
     self.pair_split = Feature(shape=(None,), dtype=tf.int32)
     self.atom_split = Feature(shape=(None,), dtype=tf.int32)
     self.atom_to_pair = Feature(shape=(None, 2), dtype=tf.int32)
+    self.prot_desc = Feature(shape=(None, self.prot_desc_length))
+    #self._training_placeholder = Feature(shape=(None,), dtype=tf.float32)
+
     weave_layer1A, weave_layer1P = WeaveLayerFactory(
         n_atom_input_feat=self.n_atom_feat,
         n_pair_input_feat=self.n_pair_feat,
@@ -78,27 +85,60 @@ class WeaveTensorGraph(TensorGraph):
         n_pair_input_feat=self.n_hidden,
         n_atom_output_feat=self.n_hidden,
         n_pair_output_feat=self.n_hidden,
-        update_pair=False,
+        update_pair=True,
         in_layers=[
             weave_layer1A, weave_layer1P, self.pair_split, self.atom_to_pair
         ])
+    weave_layer3A, weave_layer3P = WeaveLayerFactory(
+        n_atom_input_feat=self.n_hidden,
+        n_pair_input_feat=self.n_hidden,
+        n_atom_output_feat=self.n_hidden,
+        n_pair_output_feat=self.n_hidden,
+        update_pair=False,
+        in_layers=[
+            weave_layer2A, weave_layer2P, self.pair_split, self.atom_to_pair
+        ])
+    #whole_mol = Concat(in_layers=[weave_layer3A, weave_layer3P])
+    weave_layer3A = Dropout(self.dropout_prob, in_layers = weave_layer3A)
     dense1 = Dense(
         out_channels=self.n_graph_feat,
         activation_fn=tf.nn.tanh,
-        in_layers=weave_layer2A)
+        in_layers=weave_layer3A)
     batch_norm1 = BatchNormalization(epsilon=1e-5, mode=1, in_layers=[dense1])
+    #batch_norm1 = BatchNorm(in_layers=[dense1])
     weave_gather = WeaveGather(
         self.batch_size,
         n_input=self.n_graph_feat,
         gaussian_expand=True,
         in_layers=[batch_norm1, self.atom_split])
+    weave_gather = Dropout(self.dropout_prob, in_layers = weave_gather)
+    prot_desc = Dropout(self.dropout_prob, in_layers = self.prot_desc)
+    recent = Concat(in_layers=[weave_gather, prot_desc])
+    # #combined = Dropout(self.dropout_prob, in_layers = combined)
+    # dense2 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[combined])
+    # batch_norm2 = BatchNormalization(epsilon=1e-5, in_layers=[dense2])
+    # #batch_norm2 = BatchNorm(in_layers=[dense2])
+    # #dropout2 = Dropout(self.dropout_prob, in_layers = batch_norm2)
+    # dense3 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[batch_norm2])
+    # batch_norm3 = BatchNormalization(epsilon=1e-5, in_layers=[dense3])
+    # #batch_norm3 = BatchNorm(in_layers=[dense3])
+    # #dropout3 = Dropout(self.dropout_prob, in_layers = batch_norm3)
+    # dense4 = Dense(out_channels=512, activation_fn=tf.nn.relu, in_layers=[batch_norm3])
+    # batch_norm4 = BatchNormalization(epsilon=1e-5, in_layers=[dense4])
+    # #batch_norm4 = BatchNorm(in_layers=[dense4])
+    # #dropout4 = Dropout(self.dropout_prob, in_layers = batch_norm4)
+    # #pdb.set_trace()
+    for _ in range(self.num_dense_layer):
+      dense_combined = Dense(out_channels=self.dense_cmb_layer_size, activation_fn=tf.nn.relu,
+        in_layers=[recent])
+      recent = BatchNormalization(epsilon=1e-5, in_layers=[dense_combined])
 
     costs = []
     self.labels_fd = []
     for task in range(self.n_tasks):
       if self.mode == "classification":
         classification = Dense(
-            out_channels=2, activation_fn=None, in_layers=[weave_gather])
+            out_channels=2, activation_fn=None, in_layers=[recent])
         softmax = SoftMax(in_layers=[classification])
         self.add_output(softmax)
 
@@ -108,7 +148,7 @@ class WeaveTensorGraph(TensorGraph):
         costs.append(cost)
       if self.mode == "regression":
         regression = Dense(
-            out_channels=1, activation_fn=None, in_layers=[weave_gather])
+            out_channels=1, activation_fn=None, in_layers=[recent])
         self.add_output(regression)
 
         label = Label(shape=(None, 1))
@@ -153,8 +193,11 @@ class WeaveTensorGraph(TensorGraph):
         atom_split = []
         atom_to_pair = []
         pair_split = []
+        prot_descriptor = []
         start = 0
-        for im, mol in enumerate(X_b):
+        for im, pair in enumerate(X_b):
+          mol = pair[0]
+          prot = pair[1]          
           n_atoms = mol.get_num_atoms()
           # number of atoms in each molecule
           atom_split.extend([im] * n_atoms)
@@ -174,12 +217,18 @@ class WeaveTensorGraph(TensorGraph):
           pair_feat.append(
               np.reshape(mol.get_pair_features(),
                          (n_atoms * n_atoms, self.n_pair_feat)))
+          
+          
+          protein_name = prot.get_name()
+          prot_descriptor.append(self.prot_desc_dict[protein_name])
 
         feed_dict[self.atom_features] = np.concatenate(atom_feat, axis=0)
         feed_dict[self.pair_features] = np.concatenate(pair_feat, axis=0)
         feed_dict[self.pair_split] = np.array(pair_split)
         feed_dict[self.atom_split] = np.array(atom_split)
         feed_dict[self.atom_to_pair] = np.concatenate(atom_to_pair, axis=0)
+        feed_dict[self.prot_desc] = np.concatenate(prot_descriptor, axis=0)
+        
         yield feed_dict
 
   def predict_on_generator(self, generator, transformers=[], outputs=None):
@@ -670,7 +719,7 @@ class GraphConvTensorGraph(TensorGraph):
                n_tasks,
                graph_conv_layers=[64, 64],
                dense_layer_size=128,
-               dropout=0.0,
+               #dropout=0.0,
                mode="classification",
                **kwargs):
     """
@@ -691,7 +740,7 @@ class GraphConvTensorGraph(TensorGraph):
     self.mode = mode
     self.error_bars = True if 'error_bars' in kwargs and kwargs['error_bars'] else False
     self.dense_layer_size = dense_layer_size
-    self.dropout = dropout
+    #self.dropout = dropout
     self.graph_conv_layers = graph_conv_layers
     kwargs['use_queue'] = False
     super(GraphConvTensorGraph, self).__init__(**kwargs)
@@ -704,8 +753,10 @@ class GraphConvTensorGraph(TensorGraph):
     self.atom_features = Feature(shape=(None, 75))
     self.degree_slice = Feature(shape=(None, 2), dtype=tf.int32)
     self.membership = Feature(shape=(None,), dtype=tf.int32)
+    self.prot_desc = Feature(shape=(None, self.prot_desc_length))
 
     self.deg_adjs = []
+    # TODO: I have changed the BatchNorm layers to BatchNormalization layers.
     for i in range(0, 10 + 1):
       deg_adj = Feature(shape=(None, i + 1), dtype=tf.int32)
       self.deg_adjs.append(deg_adj)
@@ -713,15 +764,17 @@ class GraphConvTensorGraph(TensorGraph):
     for layer_size in self.graph_conv_layers:
       gc1_in = [in_layer, self.degree_slice, self.membership] + self.deg_adjs
       gc1 = GraphConv(layer_size, activation_fn=tf.nn.relu, in_layers=gc1_in)
-      batch_norm1 = BatchNorm(in_layers=[gc1])
+      #batch_norm1 = BatchNorm(in_layers=[gc1])
+      batch_norm1 = BatchNormalization(epsilon=1e-5, in_layers=[gc1])
       gp_in = [batch_norm1, self.degree_slice, self.membership] + self.deg_adjs
       in_layer = GraphPool(in_layers=gp_in)
     dense = Dense(
         out_channels=self.dense_layer_size,
         activation_fn=tf.nn.relu,
         in_layers=[in_layer])
-    batch_norm3 = BatchNorm(in_layers=[dense])
-    batch_norm3 = Dropout(self.dropout, in_layers=[batch_norm3])
+    #batch_norm3 = BatchNorm(in_layers=[dense])
+    batch_norm3 = BatchNormalization(epsilon=1e-5, in_layers=[dense])
+    batch_norm3 = Dropout(self.dropout_prob, in_layers=[batch_norm3])
     readout = GraphGather(
         batch_size=self.batch_size,
         activation_fn=tf.nn.tanh,
@@ -730,13 +783,22 @@ class GraphConvTensorGraph(TensorGraph):
 
     if self.error_bars == True:
       readout = Dropout(in_layers=[readout], dropout_prob=0.2)
-
+    else:
+      readout = Dropout(self.dropout_prob, in_layers=[readout])
+    
+    prot_desc = Dropout(self.dropout_prob, in_layers = [self.prot_desc])
+    recent = Concat(in_layers=[readout, prot_desc])
+    for _ in range(self.num_dense_layer):
+      dense_combined = Dense(out_channels=self.dense_cmb_layer_size, activation_fn=tf.nn.relu,
+        in_layers=[recent])
+      recent = BatchNormalization(epsilon=1e-5, in_layers=[dense_combined])
+    
     costs = []
     self.my_labels = []
     for task in range(self.n_tasks):
       if self.mode == 'classification':
         classification = Dense(
-            out_channels=2, activation_fn=None, in_layers=[readout])
+            out_channels=2, activation_fn=None, in_layers=[recent])
 
         softmax = SoftMax(in_layers=[classification])
         self.add_output(softmax)
@@ -747,7 +809,7 @@ class GraphConvTensorGraph(TensorGraph):
         costs.append(cost)
       if self.mode == 'regression':
         regression = Dense(
-            out_channels=1, activation_fn=None, in_layers=[readout])
+            out_channels=1, activation_fn=None, in_layers=[recent])
         self.add_output(regression)
 
         label = Label(shape=(None, 1))
@@ -783,14 +845,33 @@ class GraphConvTensorGraph(TensorGraph):
           if self.mode == 'regression':
             d[label] = np.expand_dims(y_b[:, index], -1)
         d[self.my_task_weights] = w_b
-        multiConvMol = ConvMol.agglomerate_mols(X_b)
+        multiConvMol = ConvMol.agglomerate_mols(X_b[:, 0])
+        prot_list = X_b[:, 1]
         d[self.atom_features] = multiConvMol.get_atom_features()
         d[self.degree_slice] = multiConvMol.deg_slice
         d[self.membership] = multiConvMol.membership
+        prot_name_list = [prot.get_name() for prot in prot_list]
+        prot_desc = [self.prot_desc_dict[prot_name] for prot_name in prot_name_list]
+        d[self.prot_desc] = np.squeeze(np.array(prot_desc))
         for i in range(1, len(multiConvMol.get_deg_adjacency_lists())):
           d[self.deg_adjs[i - 1]] = multiConvMol.get_deg_adjacency_lists()[i]
+        
         yield d
+  '''
+  def predict_on_generator(self, generator, transformers=[], outputs=None):
+    out = super(GraphConvTensorGraph, self).predict_on_generator(
+        generator, transformers=[], outputs=outputs)
+    pdb.set_trace()
+    if outputs is None:
+      outputs = self.outputs
+    if len(outputs) > 1:
+      out = np.stack(out, axis=1)
 
+    out = undo_transforms(out, transformers)
+    return out
+  '''
+    # TODO: need to figure out about n_samples.
+  
   def predict_on_generator(self, generator, transformers=[], outputs=None):
     if not self.built:
       self.build()
@@ -808,6 +889,7 @@ class GraphConvTensorGraph(TensorGraph):
         }
         # Recording the number of samples in the input batch
         n_samples = max(feed_dict[self.membership.out_tensor]) + 1
+        #pdb.set_trace()
         feed_dict[self._training_placeholder] = 0.0
         feed_results = self.session.run(outputs, feed_dict=feed_dict)
         if len(feed_results) > 1:
@@ -830,7 +912,7 @@ class GraphConvTensorGraph(TensorGraph):
         return final_results[0]
       else:
         return final_results
-
+  
   def predict_proba_on_generator(self, generator, transformers=[],
                                  outputs=None):
     if not self.built:
@@ -853,16 +935,27 @@ class GraphConvTensorGraph(TensorGraph):
         results.append(result[:n_samples])
       return np.concatenate(results, axis=0)
 
-  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False):
+  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False,
+    no_concordance_index=False, plot=False, is_training_set=False, tasks=None, 
+    model_name=None, no_r2=False):
     if not self.built:
       self.build()
     return self.evaluate_generator(
         self.default_generator(dataset, predict=True),
         metrics,
+        # I added the following two lines.
+        dataset=dataset,
+        transformers=transformers,
         labels=self.my_labels,
         weights=[self.my_task_weights],
-        per_task_metrics=per_task_metrics)
-
+        per_task_metrics=per_task_metrics,
+        no_r2=no_r2,
+        no_concordance_index=no_concordance_index,
+        plot=plot,
+        is_training_set=is_training_set,
+        tasks=tasks,
+        model_name=model_name)
+  
   def bayesian_predict(self,
                        dataset,
                        transformers=[],
@@ -990,6 +1083,7 @@ class MPNNTensorGraph(TensorGraph):
     self.pair_features = Feature(shape=(None, self.n_pair_feat))
     self.atom_split = Feature(shape=(None,), dtype=tf.int32)
     self.atom_to_pair = Feature(shape=(None, 2), dtype=tf.int32)
+    self.prot_desc = Feature(shape=(None, self.prot_desc_length))
 
     message_passing = MessagePassing(
         self.T,
@@ -1006,16 +1100,26 @@ class MPNNTensorGraph(TensorGraph):
         n_hidden=self.n_hidden,
         in_layers=[atom_embeddings, self.atom_split])
 
-    dense1 = Dense(
-        out_channels=2 * self.n_hidden,
-        activation_fn=tf.nn.relu,
-        in_layers=[mol_embeddings])
+    # dense1 = Dense(
+        # out_channels=2 * self.n_hidden,
+        # activation_fn=tf.nn.relu,
+        # in_layers=[mol_embeddings])
+    # TODO: Not quite sure whether we should let mol_embeddings have the same dropout rate.
+    #mol_embeddings = Dropout(self.dropout_prob, in_layers = self.mol_embeddings)
+
+    prot_desc = Dropout(self.dropout_prob, in_layers = self.prot_desc)
+    recent = Concat(in_layers=[mol_embeddings, prot_desc])
+    for _ in range(self.num_dense_layer):
+      dense_combined = Dense(out_channels = self.dense_cmb_layer_size, activation_fn = tf.nn.relu,
+        in_layers=[recent])
+      recent = BatchNormalization(epsilon=1e-5, in_layers=[dense_combined])
+      
     costs = []
     self.labels_fd = []
     for task in range(self.n_tasks):
       if self.mode == "classification":
         classification = Dense(
-            out_channels=2, activation_fn=None, in_layers=[dense1])
+            out_channels=2, activation_fn=None, in_layers=[recent])
         softmax = SoftMax(in_layers=[classification])
         self.add_output(softmax)
 
@@ -1025,7 +1129,7 @@ class MPNNTensorGraph(TensorGraph):
         costs.append(cost)
       if self.mode == "regression":
         regression = Dense(
-            out_channels=1, activation_fn=None, in_layers=[dense1])
+            out_channels=1, activation_fn=None, in_layers=[recent])
         self.add_output(regression)
 
         label = Label(shape=(None, 1))
@@ -1071,8 +1175,11 @@ class MPNNTensorGraph(TensorGraph):
         atom_split = []
         atom_to_pair = []
         pair_split = []
+        prot_descriptor = []
         start = 0
-        for im, mol in enumerate(X_b):
+        for im, pair in enumerate(X_b):
+          mol = pair[0]
+          prot = pair[1]
           n_atoms = mol.get_num_atoms()
           # number of atoms in each molecule
           atom_split.extend([im] * n_atoms)
@@ -1092,11 +1199,15 @@ class MPNNTensorGraph(TensorGraph):
           pair_feat.append(
               np.reshape(mol.get_pair_features(),
                          (n_atoms * n_atoms, self.n_pair_feat)))
-
+          protein_name = prot.get_name()
+          prot_descriptor.append(self.prot_desc_dict[protein_name])
+        
         feed_dict[self.atom_features] = np.concatenate(atom_feat, axis=0)
         feed_dict[self.pair_features] = np.concatenate(pair_feat, axis=0)
         feed_dict[self.atom_split] = np.array(atom_split)
         feed_dict[self.atom_to_pair] = np.concatenate(atom_to_pair, axis=0)
+        feed_dict[self.prot_desc] = np.concatenate(prot_descriptor, axis=0)
+        
         yield feed_dict
 
   def predict(self, dataset, transformers=[], batch_size=None):
