@@ -5,27 +5,22 @@ Created on Thu Mar 30 14:02:04 2017
 
 @author: michael
 """
-
-from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
 import numpy as np
 import tensorflow as tf
-import pdb
-from dcCustom.nn import activations
-from dcCustom.nn import initializations
-from dcCustom.nn import model_ops
-
-from dcCustom.models.tensorgraph.layers import Layer, LayerSplitter
-from dcCustom.models.tensorgraph.layers import convert_to_layers
+from deepchem.models.tensorgraph import activations
+from deepchem.models.tensorgraph import initializations
+from deepchem.models.tensorgraph import model_ops
+from deepchem.models.tensorgraph.layers import Layer, LayerSplitter
+from deepchem.models.tensorgraph.layers import convert_to_layers
 
 
 class WeaveLayer(Layer):
   """ TensorGraph style implementation
-    The same as deepchem.nn.WeaveLayer
-    Note: Use WeaveLayerFactory to construct this layer
-    """
+  Note: Use WeaveLayerFactory to construct this layer
+  """
 
   def __init__(self,
                n_atom_input_feat=75,
@@ -39,7 +34,6 @@ class WeaveLayer(Layer):
                update_pair=True,
                init='glorot_uniform',
                activation='relu',
-               dropout=None,
                **kwargs):
     """
     Parameters
@@ -61,13 +55,10 @@ class WeaveLayer(Layer):
       Weight initialization for filters.
     activation: str, optional
       Activation function applied
-    dropout: float, optional
-      Dropout probability, not supported here
-
     """
     super(WeaveLayer, self).__init__(**kwargs)
-    self.init = initializations.get(init)  # Set weight initialization
-    self.activation = activations.get(activation)  # Get activations
+    self.init = init  # Set weight initialization
+    self.activation = activation  # Get activations
     self.update_pair = update_pair  # last weave layer does not need to update
     self.n_hidden_AA = n_hidden_AA
     self.n_hidden_PA = n_hidden_PA
@@ -88,18 +79,19 @@ class WeaveLayer(Layer):
         TODO(rbharath): Need to make this not set instance variables to
         follow style in other layers.
         """
+    init = initializations.get(self.init)  # Set weight initialization
 
-    self.W_AA = self.init([self.n_atom_input_feat, self.n_hidden_AA])
+    self.W_AA = init([self.n_atom_input_feat, self.n_hidden_AA])
     self.b_AA = model_ops.zeros(shape=[
         self.n_hidden_AA,
     ])
 
-    self.W_PA = self.init([self.n_pair_input_feat, self.n_hidden_PA])
+    self.W_PA = init([self.n_pair_input_feat, self.n_hidden_PA])
     self.b_PA = model_ops.zeros(shape=[
         self.n_hidden_PA,
     ])
 
-    self.W_A = self.init([self.n_hidden_A, self.n_atom_output_feat])
+    self.W_A = init([self.n_hidden_A, self.n_atom_output_feat])
     self.b_A = model_ops.zeros(shape=[
         self.n_atom_output_feat,
     ])
@@ -108,17 +100,17 @@ class WeaveLayer(Layer):
         self.W_AA, self.b_AA, self.W_PA, self.b_PA, self.W_A, self.b_A
     ]
     if self.update_pair:
-      self.W_AP = self.init([self.n_atom_input_feat * 2, self.n_hidden_AP])
+      self.W_AP = init([self.n_atom_input_feat * 2, self.n_hidden_AP])
       self.b_AP = model_ops.zeros(shape=[
           self.n_hidden_AP,
       ])
 
-      self.W_PP = self.init([self.n_pair_input_feat, self.n_hidden_PP])
+      self.W_PP = init([self.n_pair_input_feat, self.n_hidden_PP])
       self.b_PP = model_ops.zeros(shape=[
           self.n_hidden_PP,
       ])
 
-      self.W_P = self.init([self.n_hidden_P, self.n_pair_output_feat])
+      self.W_P = init([self.n_hidden_P, self.n_pair_output_feat])
       self.b_P = model_ops.zeros(shape=[
           self.n_pair_output_feat,
       ])
@@ -127,9 +119,11 @@ class WeaveLayer(Layer):
           [self.W_AP, self.b_AP, self.W_PP, self.b_PP, self.W_P, self.b_P])
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """ description and explanation refer to deepchem.nn.WeaveLayer
-        parent layers: [atom_features, pair_features], pair_split, atom_to_pair
-        """
+    """Creates weave tensors.
+
+    parent layers: [atom_features, pair_features], pair_split, atom_to_pair
+    """
+    activation = activations.get(self.activation)  # Get activations
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -143,35 +137,34 @@ class WeaveLayer(Layer):
     atom_to_pair = in_layers[3].out_tensor
 
     AA = tf.matmul(atom_features, self.W_AA) + self.b_AA
-    AA = self.activation(AA)
+    AA = activation(AA)
     PA = tf.matmul(pair_features, self.W_PA) + self.b_PA
-    PA = self.activation(PA)
+    PA = activation(PA)
     PA = tf.segment_sum(PA, pair_split)
 
     A = tf.matmul(tf.concat([AA, PA], 1), self.W_A) + self.b_A
-    A = self.activation(A)
+    A = activation(A)
 
     if self.update_pair:
       AP_ij = tf.matmul(
           tf.reshape(
               tf.gather(atom_features, atom_to_pair),
               [-1, 2 * self.n_atom_input_feat]), self.W_AP) + self.b_AP
-      AP_ij = self.activation(AP_ij)
+      AP_ij = activation(AP_ij)
       AP_ji = tf.matmul(
           tf.reshape(
               tf.gather(atom_features, tf.reverse(atom_to_pair, [1])),
               [-1, 2 * self.n_atom_input_feat]), self.W_AP) + self.b_AP
-      AP_ji = self.activation(AP_ji)
+      AP_ji = activation(AP_ji)
 
       PP = tf.matmul(pair_features, self.W_PP) + self.b_PP
-      PP = self.activation(PP)
+      PP = activation(PP)
       P = tf.matmul(tf.concat([AP_ij + AP_ji, PP], 1), self.W_P) + self.b_P
-      P = self.activation(P)
+      P = activation(P)
     else:
       P = pair_features
 
     self.out_tensors = [A, P]
-    #pdb.set_trace()
     if set_tensors:
       self.variables = self.trainable_weights
       self.out_tensor = A
@@ -185,7 +178,7 @@ class WeaveLayer(Layer):
     self.W_AA, self.b_AA, self.W_PA, self.b_PA, self.W_A, self.b_A = None, None, None, None, None, None
 
     out_tensor, out_tensors, trainable_weights, variables = self.out_tensor, self.out_tensors, self.trainable_weights, self.variables
-    self.out_tensor, self.out_tensors, self.trainable_weights, self.variables, self.activation, self.init = None, [], [], [], None, None
+    self.out_tensor, self.out_tensors, self.trainable_weights, self.variables = None, [], [], []
 
     return W_AP, b_AP, W_PP, W_PP, W_P, b_P, \
            W_AA, b_AA, W_PA, b_PA, W_A, b_A, \
@@ -204,8 +197,7 @@ def WeaveLayerFactory(**kwargs):
 
 class WeaveGather(Layer):
   """ TensorGraph style implementation
-    The same as deepchem.nn.WeaveGather
-    """
+  """
 
   def __init__(self,
                batch_size,
@@ -213,7 +205,7 @@ class WeaveGather(Layer):
                gaussian_expand=False,
                init='glorot_uniform',
                activation='tanh',
-               epsilon=1e-7,
+               epsilon=1e-3,
                momentum=0.99,
                **kwargs):
     """
@@ -252,9 +244,9 @@ class WeaveGather(Layer):
       self.trainable_weights = None
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """ description and explanation refer to deepchem.nn.WeaveGather
-        parent layers: atom_features, atom_split
-        """
+    """
+    parent layers: atom_features, atom_split
+    """
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -289,10 +281,8 @@ class WeaveGather(Layer):
     ]
     dist_max = [dist[i].prob(gaussian_memberships[i][0]) for i in range(11)]
     outputs = [dist[i].prob(x) / dist_max[i] for i in range(11)]
-    #outputs = [a + self.epsilon for a in outputs]
     outputs = tf.stack(outputs, axis=2)
-    outputs = (outputs + self.epsilon) / tf.add(tf.reduce_sum(outputs, axis=2, 
-      keep_dims=True), self.epsilon)
+    outputs = outputs / tf.reduce_sum(outputs, axis=2, keepdims=True)
     outputs = tf.reshape(outputs, [-1, self.n_input * 11])
     return outputs
 
@@ -310,8 +300,7 @@ class WeaveGather(Layer):
 
 class DTNNEmbedding(Layer):
   """ TensorGraph style implementation
-    The same as deepchem.nn.DTNNEmbedding
-    """
+  """
 
   def __init__(self,
                n_embedding=30,
@@ -340,9 +329,9 @@ class DTNNEmbedding(Layer):
     self.trainable_weights = [self.embedding_list]
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """description and explanation refer to deepchem.nn.DTNNEmbedding
-        parent layers: atom_number
-        """
+    """
+    parent layers: atom_number
+    """
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -367,8 +356,7 @@ class DTNNEmbedding(Layer):
 
 class DTNNStep(Layer):
   """ TensorGraph style implementation
-    The same as deepchem.nn.DTNNStep
-    """
+  """
 
   def __init__(self,
                n_embedding=30,
@@ -415,9 +403,9 @@ class DTNNStep(Layer):
     ]
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """description and explanation refer to deepchem.nn.DTNNStep
-        parent layers: atom_features, distance, distance_membership_i, distance_membership_j
-        """
+    """
+    parent layers: atom_features, distance, distance_membership_i, distance_membership_j
+    """
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -464,8 +452,7 @@ class DTNNStep(Layer):
 
 class DTNNGather(Layer):
   """ TensorGraph style implementation
-    The same as deepchem.nn.DTNNGather
-    """
+  """
 
   def __init__(self,
                n_embedding=30,
@@ -517,9 +504,9 @@ class DTNNGather(Layer):
     self.trainable_weights = self.W_list + self.b_list
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """description and explanation refer to deepchem.nn.DTNNGather
-        parent layers: atom_features, atom_membership
-        """
+    """
+    parent layers: atom_features, atom_membership
+    """
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -569,8 +556,7 @@ class DTNNExtract(Layer):
 
 class DAGLayer(Layer):
   """ TensorGraph style implementation
-    The same as deepchem.nn.DAGLayer
-    """
+  """
 
   def __init__(self,
                n_graph_feat=30,
@@ -591,16 +577,18 @@ class DAGLayer(Layer):
           Number of features listed per atom.
         max_atoms: int, optional
           Maximum number of atoms in molecules.
-        layer_sizes: list of int, optional(default=[1000])
-          Structure of hidden layer(s)
+        layer_sizes: list of int, optional(default=[100])
+          List of hidden layer size(s):
+          length of this list represents the number of hidden layers,
+          and each element is the width of corresponding hidden layer.
         init: str, optional
           Weight initialization for filters.
         activation: str, optional
-          Activation function applied
+          Activation function applied.
         dropout: float, optional
-          Dropout probability, not supported here
+          Dropout probability in hidden layer(s).
         batch_size: int, optional
-          number of molecules in a batch
+          number of molecules in a batch.
         """
     super(DAGLayer, self).__init__(**kwargs)
 
@@ -637,9 +625,9 @@ class DAGLayer(Layer):
     self.trainable_weights = self.W_list + self.b_list
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """description and explanation refer to deepchem.nn.DAGLayer
-        parent layers: atom_features, parents, calculation_orders, calculation_masks, n_atoms
-        """
+    """
+    parent layers: atom_features, parents, calculation_orders, calculation_masks, n_atoms
+    """
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -693,7 +681,8 @@ class DAGLayer(Layer):
       # DAGgraph_step maps from batch_inputs to a batch of graph_features
       # of shape: (batch_size*max_atoms) * n_graph_features
       # representing the graph features of target atoms in each graph
-      batch_outputs = self.DAGgraph_step(batch_inputs, self.W_list, self.b_list)
+      batch_outputs = self.DAGgraph_step(batch_inputs, self.W_list, self.b_list,
+                                         **kwargs)
 
       # index for targe atoms
       target_index = tf.stack([tf.range(n_atoms), parents[:, count, 0]], axis=1)
@@ -708,11 +697,14 @@ class DAGLayer(Layer):
       self.out_tensor = out_tensor
     return out_tensor
 
-  def DAGgraph_step(self, batch_inputs, W_list, b_list):
+  def DAGgraph_step(self, batch_inputs, W_list, b_list, **kwargs):
     outputs = batch_inputs
     for idw, W in enumerate(W_list):
       outputs = tf.nn.xw_plus_b(outputs, W, b_list[idw])
       outputs = self.activation(outputs)
+      training = kwargs['training'] if 'training' in kwargs else 1.0
+      if not self.dropout is None:
+        outputs = tf.nn.dropout(outputs, 1.0 - self.dropout * training)
     return outputs
 
   def none_tensors(self):
@@ -728,8 +720,7 @@ class DAGLayer(Layer):
 
 class DAGGather(Layer):
   """ TensorGraph style implementation
-    The same as deepchem.nn.DAGGather
-    """
+  """
 
   def __init__(self,
                n_graph_feat=30,
@@ -744,19 +735,21 @@ class DAGGather(Layer):
         Parameters
         ----------
         n_graph_feat: int, optional
-          Number of features for each atom
+          Number of features for each atom.
         n_outputs: int, optional
           Number of features for each molecule.
         max_atoms: int, optional
           Maximum number of atoms in molecules.
         layer_sizes: list of int, optional
-          Structure of hidden layer(s)
+          List of hidden layer size(s):
+          length of this list represents the number of hidden layers,
+          and each element is the width of corresponding hidden layer.
         init: str, optional
           Weight initialization for filters.
         activation: str, optional
-          Activation function applied
+          Activation function applied.
         dropout: float, optional
-          Dropout probability, not supported
+          Dropout probability in the hidden layer(s).
         """
     super(DAGGather, self).__init__(**kwargs)
 
@@ -789,9 +782,9 @@ class DAGGather(Layer):
     self.trainable_weights = self.W_list + self.b_list
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """description and explanation refer to deepchem.nn.DAGGather
-        parent layers: atom_features, membership
-        """
+    """
+    parent layers: atom_features, membership
+    """
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -805,18 +798,22 @@ class DAGGather(Layer):
     # Extract atom_features
     graph_features = tf.segment_sum(atom_features, membership)
     # sum all graph outputs
-    outputs = self.DAGgraph_step(graph_features, self.W_list, self.b_list)
+    outputs = self.DAGgraph_step(graph_features, self.W_list, self.b_list,
+                                 **kwargs)
     out_tensor = outputs
     if set_tensors:
       self.variables = self.trainable_weights
       self.out_tensor = out_tensor
     return out_tensor
 
-  def DAGgraph_step(self, batch_inputs, W_list, b_list):
+  def DAGgraph_step(self, batch_inputs, W_list, b_list, **kwargs):
     outputs = batch_inputs
     for idw, W in enumerate(W_list):
       outputs = tf.nn.xw_plus_b(outputs, W, b_list[idw])
       outputs = self.activation(outputs)
+      training = kwargs['training'] if 'training' in kwargs else 1.0
+      if not self.dropout is None:
+        outputs = tf.nn.dropout(outputs, 1.0 - self.dropout * training)
     return outputs
 
   def none_tensors(self):
@@ -936,7 +933,7 @@ class EdgeNetwork(object):
 
   def forward(self, atom_features, atom_to_pair):
     out = tf.expand_dims(tf.gather(atom_features, atom_to_pair[:, 1]), 2)
-    out = tf.reduce_sum(out * self.A, axis=1)
+    out = tf.squeeze(tf.matmul(self.A, out), axis=2)
     out = tf.segment_sum(out, atom_to_pair[:, 0])
     return out
 
