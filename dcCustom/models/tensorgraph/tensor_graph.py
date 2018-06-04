@@ -4,35 +4,31 @@ import pickle
 import threading
 import time
 
+import logging
 import numpy as np
 import tensorflow as tf
-import math
-import pdb
 from tensorflow.python.pywrap_tensorflow_internal import NewCheckpointReader
-from tensorflow.python import debug as tf_debug
 
-from dcCustom.data import NumpyDataset
-from dcCustom.models.models import Model
-from dcCustom.models.tensorgraph.layers import InputFifoQueue, Label, Feature, \
-  Weights, Constant, Dense
+from deepchem.data import NumpyDataset
+from deepchem.models.models import Model
+from deepchem.models.tensorgraph.layers import InputFifoQueue, Label, Feature, Weights, Constant
 from deepchem.models.tensorgraph.optimizers import Adam
 from deepchem.trans import undo_transforms
-from dcCustom.utils.evaluate import GeneratorEvaluator
+from deepchem.utils.evaluate import GeneratorEvaluator
+
+logger = logging.getLogger(__name__)
 
 
 class TensorGraph(Model):
 
   def __init__(self,
                tensorboard=False,
-               tensorboard_log_frequency=30,
+               tensorboard_log_frequency=100,
                batch_size=100,
                random_seed=None,
                use_queue=True,
                graph=None,
                learning_rate=0.001,
-               dropout_prob = 0.5,
-               num_dense_layer = 3,
-               dense_cmb_layer_size = 256,
                configproto=None,
                **kwargs):
     """
@@ -70,10 +66,6 @@ class TensorGraph(Model):
     self.queue_installed = False
     self.optimizer = Adam(
         learning_rate=learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-7)
-    self.dropout_prob = dropout_prob
-    # TODO: the following two variables are temporary, for hyperparameter tuning purpose.
-    self.num_dense_layer = num_dense_layer
-    self.dense_cmb_layer_size = dense_cmb_layer_size
     self.configproto = configproto
 
     # Singular place to hold Tensor objects which don't serialize
@@ -122,27 +114,12 @@ class TensorGraph(Model):
 
   def fit(self,
           dataset,
-          valid_dataset=None,
           nb_epoch=10,
           max_checkpoints_to_keep=5,
           checkpoint_interval=1000,
           deterministic=False,
           restore=False,
           submodel=None,
-          metric=None,
-          direction=None,
-          early_stopping=True,
-          no_r2=False,
-          evaluate_freq = 3, # Number of training epochs before evaluating
-          # for early stopping.
-          patience = 3,
-          transformers=None,
-          per_task_metrics=False,
-          tasks=None,
-          verbose_search=False,
-          log_file=None,
-          aggregated_tasks=[],
-          model_name=None,
           **kwargs):
     """Train this model on a dataset.
 
@@ -166,153 +143,11 @@ class TensorGraph(Model):
     submodel: Submodel
       an alternate training objective to use.  This should have been created by
       calling create_submodel().
-    """    
-    if not early_stopping:
-      return self.fit_generator(
-          self.default_generator(
-              dataset, epochs=nb_epoch, deterministic=deterministic),
-          max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
-    # Using early stopping.
-    
-    assert evaluate_freq > 0
-    assert direction is not None
-    assert checkpoint_interval > 0
-    assert transformers is not None
-    if verbose_search:
-      assert log_file is not None
-    
-    iterations=math.ceil(nb_epoch/evaluate_freq)
-    if metric is None:
-      if self.mode == 'regression':
-        metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean,
-          arithmetic_mean=True),
-          dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean,
-          arithmetic_mean=True),
-          dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean, arithmetic_mean=True)]
-        direction = False
-      elif self.mode == 'classification':
-        metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean,
-          arithmetic_mean=True),
-          dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean,
-          arithmetic_mean=True)]
-        direction = True
-    
-    self.temp_model_dir = self.model_dir + "/temp"
-    wait_time = 0
-    
-    best_score = math.inf * -1
-        
-    with self._get_tf("Graph").as_default():
-      optimal_epoch = 0
-      epoch_count = 0
-      for i in range(iterations):
-        num_epoch = evaluate_freq
-        if i == (iterations - 1):
-          num_epoch = nb_epoch - evaluate_freq * i
-        # Temporarily overriding the path of saving.
-        self.save_file = "%s/%s" % (self.temp_model_dir, "model")
-        self.fit_generator(
-            self.default_generator(
-                dataset, epochs=num_epoch, deterministic=deterministic),
-            max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
-        saver = tf.train.Saver(
-              max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
-        if not per_task_metrics:
-          valid_score = self.evaluate(valid_dataset, metric, transformers, no_r2=no_r2,
-            per_task_metrics=per_task_metrics, tasks=tasks, model_name=model_name) 
-            
-        else:
-          valid_score, per_task_sc_val = self.evaluate(valid_dataset, metric,
-            transformers, per_task_metrics=per_task_metrics, tasks=tasks, no_r2=no_r2,
-            model_name=model_name)
-
-        val_sc = 0
-        per_task_sc = [0.0 for task in aggregated_tasks]  
-        # we use a combination of metrics.
-        if self.mode == 'regression':          
-          direction = False
-          for mtc in metric:
-            mtc_name = mtc.metric.__name__
-            composite_mtc_name = mtc.name
-            if mtc_name == 'rms_score': 
-              val_sc += valid_score[composite_mtc_name]
-              if per_task_metrics:
-                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
-                  per_task_sc_val[composite_mtc_name])]
-
-            if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
-              if no_r2:
-                continue
-              val_sc += -0.5 * valid_score[composite_mtc_name]
-              if per_task_metrics:
-                per_task_sc = [base - 0.5 * incr for base, incr in zip(per_task_sc, 
-                  per_task_sc_val[composite_mtc_name])]
-
-            if mtc_name == 'concordance_index':
-              val_sc += -valid_score[composite_mtc_name]
-              if per_task_metrics:
-                per_task_sc = [base - incr for base, incr in zip(per_task_sc, 
-                  per_task_sc_val[composite_mtc_name])]
-
-        elif self.mode == 'classification':          
-          direction = True
-          for mtc in metric:
-            mtc_name = mtc.metric.__name__
-            composite_mtc_name = mtc.name
-            if mtc_name == 'roc_auc_score': 
-              val_sc += valid_score[composite_mtc_name]
-              if per_task_metrics:
-                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
-                  per_task_sc_val[composite_mtc_name])]
-
-            if mtc_name == 'prc_auc_score':
-              val_sc += valid_score[composite_mtc_name]
-              if per_task_metrics:
-                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
-                  per_task_sc_val[composite_mtc_name])]
-
-        if per_task_metrics:
-          #per_task_sc_val = per_task_sc_val[metric[0].name]          
-          if tasks is None:
-            tasks=list(range(1, len(per_task_sc)+1))
-          for task, task_sc in zip(aggregated_tasks, per_task_sc):            
-            print('The score for task %s is %g' % (str(task), task_sc))
-        print('The overall validation score is: ', val_sc)
-        # Resuming the path of saving.
-        self.save_file = "%s/%s" % (self.model_dir, "model")
-        wait_time += 1
-        epoch_count += num_epoch
-        if not direction:
-          val_sc = -1 * val_sc        
-      
-        if val_sc > best_score:
-          best_score = val_sc
-          wait_time = 0
-          optimal_epoch = epoch_count
-          saver.save(self.session, self.save_file, global_step=self.global_step)
-          if verbose_search:
-            output_val_sc = val_sc
-            if not direction:
-              output_val_sc = -1 * output_val_sc
-            with open(log_file, 'a') as f:
-              f.write("Currently at epoch number: " + str(epoch_count))
-              f.write('\n')
-              # Record performances
-              f.write("Current best validation score: " + str(output_val_sc))
-              f.write('\n')
-              if per_task_metrics:         
-                if tasks is None:
-                  tasks=list(range(1, len(per_task_sc)+1))
-                for task, task_sc in zip(aggregated_tasks, per_task_sc):            
-                  f.write('The score for task %s is %g;' % (str(task), task_sc))
-                f.write('\n')
-        
-        if (wait_time > patience):
-          break       
-      self.restore() #This only restores from the self.model_dir
-      if not direction:
-        best_score = -1 * best_score
-    return [optimal_epoch, best_score]
+    """
+    return self.fit_generator(
+        self.default_generator(
+            dataset, epochs=nb_epoch, deterministic=deterministic),
+        max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
 
   def fit_generator(self,
                     feed_dict_generator,
@@ -384,7 +219,6 @@ class TensorGraph(Model):
         should_log = (self.tensorboard and
                       n_samples % self.tensorboard_log_frequency == 0)
         fetches = [train_op, loss.out_tensor]
-        
         if should_log:
           fetches.append(self._get_tf("summary_op"))
         fetched_values = self.session.run(fetches, feed_dict=feed_dict)
@@ -396,18 +230,18 @@ class TensorGraph(Model):
         if checkpoint_interval > 0 and self.global_step % checkpoint_interval == checkpoint_interval - 1:
           saver.save(self.session, self.save_file, global_step=self.global_step)
           avg_loss = float(avg_loss) / n_averaged_batches
-          print('Ending global_step %d: Average loss %g' % (self.global_step,
-                                                            avg_loss))
+          logger.info('Ending global_step %d: Average loss %g' %
+                      (self.global_step, avg_loss))
           avg_loss, n_averaged_batches = 0.0, 0.0
       if n_averaged_batches > 0:
         avg_loss = float(avg_loss) / n_averaged_batches
       if checkpoint_interval > 0:
         if n_averaged_batches > 0:
-          print('Ending global_step %d: Average loss %g' % (self.global_step,
-                                                            avg_loss))
+          logger.info('Ending global_step %d: Average loss %g' %
+                      (self.global_step, avg_loss))
         saver.save(self.session, self.save_file, global_step=self.global_step)
         time2 = time.time()
-        print("TIMING: model fitting took %0.3f s" % (time2 - time1))
+        logger.info("TIMING: model fitting took %0.3f s" % (time2 - time1))
     return avg_loss
 
   def _log_tensorboard(self, summary):
@@ -457,7 +291,6 @@ class TensorGraph(Model):
         for (initial_state, zero_state) in zip(self.rnn_initial_states,
                                                self.rnn_zero_states):
           feed_dict[initial_state] = zero_state
-        
         yield feed_dict
 
   def predict_on_generator(self, generator, transformers=[], outputs=None):
@@ -644,15 +477,8 @@ class TensorGraph(Model):
           self.rnn_initial_states += layer.rnn_initial_states
           self.rnn_final_states += layer.rnn_final_states
           self.rnn_zero_states += layer.rnn_zero_states
-          if self.tensorboard:
-            if type(layer) is Dense:
-              tf.summary.scalar('%s/fraction_of_zero_values'%layer.name, 
-                tf.nn.zero_fraction(layer.out_tensor)) 
-              layer.set_summary('histogram')
-              layer.add_summary_to_tg()
+          layer.add_summary_to_tg()
       self.session = tf.Session(config=self.configproto)
-      #self.session = tf_debug.LocalCLIDebugWrapperSession(self.session, dump_root = './tfdbg')
-      #self.session.add_tensor_filter('has_inf_or_nan', tf_debug.has_inf_or_nan)
       self.built = True
 
       # Ensure all training operators have been created.
@@ -674,7 +500,6 @@ class TensorGraph(Model):
       if layer.tensorboard:
         self.tensorboard = True
     tf.summary.scalar("loss", self.loss.out_tensor)
-    tf.summary.scalar("avg_loss", self.loss.out_tensor/self.batch_size)
     for layer in self.layers.values():
       if layer.tensorboard:
         tf.summary.tensor_summary(layer.name, layer.out_tensor)
@@ -826,7 +651,7 @@ class TensorGraph(Model):
       try:
         pickle.dump(self, fout)
       except Exception as e:
-        print(self.get_pickling_errors(self))
+        logger.info(self.get_pickling_errors(self))
         raise e
 
     # add out_tensor back to everyone
@@ -845,45 +670,30 @@ class TensorGraph(Model):
                          feed_dict_generator,
                          metrics,
                          transformers=[],
-                         dataset=None,
                          labels=None,
                          outputs=None,
                          weights=[],
-                         per_task_metrics=False,
-                         no_r2=False,
-                         no_concordance_index=False,
-                         plot=False,
-                         is_training_set=False,
-                         tasks=None,
-                         model_name=None):
+                         per_task_metrics=False):
 
     if labels is None:
       raise ValueError
     n_tasks = len(self.outputs)
-    if tasks is not None:
-      assert len(tasks) == n_tasks
     n_classes = self.outputs[0].out_tensor.get_shape()[-1].value
     evaluator = GeneratorEvaluator(
         self,
         feed_dict_generator,
         transformers,
-        dataset=dataset,
         labels=labels,
         outputs=outputs,
         weights=weights,
         n_tasks=n_tasks,
-        n_classes=n_classes,
-        is_training_set=is_training_set,
-        tasks=tasks,
-        model_name=model_name)
+        n_classes=n_classes)
     if not per_task_metrics:
-      scores = evaluator.compute_model_performance(metrics, 
-        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
+      scores = evaluator.compute_model_performance(metrics)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
-        metrics, per_task_metrics=per_task_metrics, 
-        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
+          metrics, per_task_metrics=per_task_metrics)
       return scores, per_task_scores
 
   def get_layer_variables(self, layer):
@@ -927,14 +737,12 @@ class TensorGraph(Model):
     elif obj == 'train_op':
       opt = self._get_tf('Optimizer')
       global_step = self._get_tf('GlobalStep')
-      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-      with tf.control_dependencies(update_ops):
-        try:
-          self.tensor_objects['train_op'] = opt.minimize(
-              self.loss.out_tensor, global_step=global_step)
-        except ValueError:
-          # The loss doesn't depend on any variables.
-          self.tensor_objects['train_op'] = 0
+      try:
+        self.tensor_objects['train_op'] = opt.minimize(
+            self.loss.out_tensor, global_step=global_step)
+      except ValueError:
+        # The loss doesn't depend on any variables.
+        self.tensor_objects['train_op'] = 0
     elif obj == 'summary_op':
       self.tensor_objects['summary_op'] = tf.summary.merge_all(
           key=tf.GraphKeys.SUMMARIES)
@@ -1123,6 +931,7 @@ class Submodel(object):
         optimizer = self.graph.optimizer
       else:
         optimizer = self.optimizer
+      # Should we keep a separate global step count for each submodel?
       global_step = self.graph._get_tf('GlobalStep')
       tf_opt = optimizer._create_optimizer(global_step)
       self._train_op = tf_opt.minimize(loss.out_tensor, global_step, variables)
