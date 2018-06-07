@@ -1,13 +1,15 @@
 """
 Contains an abstract base class that supports different ML models.
 """
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
-__author__ = "Bharath Ramsundar and Joseph Gomes"
-__copyright__ = "Copyright 2016, Stanford University"
+__author__ = "Bharath Ramsundar and Joseph Gomes, modified by Qingyuan Feng"
+__copyright__ = "Copyright 2018, Simon Fraser University"
 __license__ = "MIT"
 
+import pdb
 import sys
 import numpy as np
 import pandas as pd
@@ -18,13 +20,12 @@ import tempfile
 import sklearn
 from sklearn.base import BaseEstimator
 
-from deepchem.data import Dataset, pad_features
+from dcCustom.data import Dataset, pad_features
 from deepchem.trans import undo_transforms
 from deepchem.utils.save import load_from_disk
 from deepchem.utils.save import save_to_disk
 from deepchem.utils.save import log
-from deepchem.utils.evaluate import Evaluator
-
+from dcCustom.utils.evaluate import Evaluator
 
 class Model(BaseEstimator):
   """
@@ -35,6 +36,8 @@ class Model(BaseEstimator):
                model_instance=None,
                model_dir=None,
                verbose=True,
+               prot_desc_dict=None,
+               prot_desc_length=None,
                **kwargs):
     """Abstract class for all models.
     Parameters:
@@ -46,8 +49,9 @@ class Model(BaseEstimator):
     """
     self.model_dir_is_temp = False
     if model_dir is not None:
-      if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
+      if os.path.exists(model_dir):
+        shutil.rmtree(model_dir)
+      os.makedirs(model_dir)
     else:
       model_dir = tempfile.mkdtemp()
       self.model_dir_is_temp = True
@@ -56,6 +60,8 @@ class Model(BaseEstimator):
     self.model_class = model_instance.__class__
 
     self.verbose = verbose
+    self.prot_desc_dict = prot_desc_dict
+    self.prot_desc_length = prot_desc_length
 
   def __del__(self):
     if 'model_dir_is_temp' in dir(self) and self.model_dir_is_temp:
@@ -140,12 +146,24 @@ class Model(BaseEstimator):
       y_pred_batch = self.predict_on_batch(X_batch)
       # Discard any padded predictions
       y_pred_batch = y_pred_batch[:n_samples]
+      #y_pred_batch = np.reshape(y_pred_batch, (n_samples, n_tasks))
       y_pred_batch = undo_transforms(y_pred_batch, transformers)
       y_preds.append(y_pred_batch)
+    # y_pred = np.vstack(y_preds)
+
+    # # The iterbatches does padding with zero-weight examples on the last batch.
+    # # Remove padded examples.
+    # n_samples = len(dataset)
+    # y_pred = np.reshape(y_pred, (n_samples, n_tasks))
+    # # Special case to handle singletasks.
+    # if n_tasks == 1:
+    #   y_pred = np.reshape(y_pred, (n_samples,))
     y_pred = np.concatenate(y_preds)
     return y_pred
 
-  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False):
+  def evaluate(self, dataset, metrics, transformers=[], per_task_metrics=False, 
+    no_concordance_index=False, plot=False, is_training_set=False, tasks=None, 
+    model_name=None, no_r2=False):
     """
     Evaluates the performance of this model on specified dataset.
 
@@ -165,13 +183,16 @@ class Model(BaseEstimator):
     dict
       Maps tasks to scores under metric.
     """
-    evaluator = Evaluator(self, dataset, transformers)
+    evaluator = Evaluator(self, dataset, transformers, is_training_set=is_training_set, 
+      tasks=tasks, model_name=model_name)
     if not per_task_metrics:
-      scores = evaluator.compute_model_performance(metrics)
+      scores = evaluator.compute_model_performance(metrics, 
+        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
-          metrics, per_task_metrics=per_task_metrics)
+          metrics, per_task_metrics=per_task_metrics, no_r2=no_r2,
+          no_concordance_index=no_concordance_index, plot=plot)
       return scores, per_task_scores
 
   def get_task_type(self):
