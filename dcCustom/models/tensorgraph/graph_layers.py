@@ -5,20 +5,23 @@ Created on Thu Mar 30 14:02:04 2017
 
 @author: michael
 """
+
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
 import numpy as np
 import tensorflow as tf
-from deepchem.models.tensorgraph import activations
-from deepchem.models.tensorgraph import initializations
-from deepchem.models.tensorgraph import model_ops
-from deepchem.models.tensorgraph.layers import Layer, LayerSplitter
-from deepchem.models.tensorgraph.layers import convert_to_layers
+import pdb
+from dcCustom.models.tensorgraph import activations, initializations, model_ops
+
+from dcCustom.models.tensorgraph.layers import Layer, LayerSplitter
+from dcCustom.models.tensorgraph.layers import convert_to_layers
 
 
 class WeaveLayer(Layer):
   """ TensorGraph style implementation
+  
   Note: Use WeaveLayerFactory to construct this layer
   """
 
@@ -34,6 +37,7 @@ class WeaveLayer(Layer):
                update_pair=True,
                init='glorot_uniform',
                activation='relu',
+               dropout=None,
                **kwargs):
     """
     Parameters
@@ -55,6 +59,9 @@ class WeaveLayer(Layer):
       Weight initialization for filters.
     activation: str, optional
       Activation function applied
+    dropout: float, optional
+      Dropout probability, not supported here
+
     """
     super(WeaveLayer, self).__init__(**kwargs)
     self.init = init  # Set weight initialization
@@ -79,8 +86,7 @@ class WeaveLayer(Layer):
         TODO(rbharath): Need to make this not set instance variables to
         follow style in other layers.
         """
-    init = initializations.get(self.init)  # Set weight initialization
-
+    init = initializations.get(self.init) # Set weight initialization
     self.W_AA = init([self.n_atom_input_feat, self.n_hidden_AA])
     self.b_AA = model_ops.zeros(shape=[
         self.n_hidden_AA,
@@ -119,11 +125,11 @@ class WeaveLayer(Layer):
           [self.W_AP, self.b_AP, self.W_PP, self.b_PP, self.W_P, self.b_P])
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """Creates weave tensors.
+    """ Creates weave tensors.
 
     parent layers: [atom_features, pair_features], pair_split, atom_to_pair
     """
-    activation = activations.get(self.activation)  # Get activations
+    activation = activations.get(self.activation)
     if in_layers is None:
       in_layers = self.in_layers
     in_layers = convert_to_layers(in_layers)
@@ -165,6 +171,7 @@ class WeaveLayer(Layer):
       P = pair_features
 
     self.out_tensors = [A, P]
+    #pdb.set_trace()
     if set_tensors:
       self.variables = self.trainable_weights
       self.out_tensor = A
@@ -197,6 +204,7 @@ def WeaveLayerFactory(**kwargs):
 
 class WeaveGather(Layer):
   """ TensorGraph style implementation
+    
   """
 
   def __init__(self,
@@ -205,7 +213,7 @@ class WeaveGather(Layer):
                gaussian_expand=False,
                init='glorot_uniform',
                activation='tanh',
-               epsilon=1e-3,
+               epsilon=1e-7,
                momentum=0.99,
                **kwargs):
     """
@@ -244,7 +252,7 @@ class WeaveGather(Layer):
       self.trainable_weights = None
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
-    """
+    """ 
     parent layers: atom_features, atom_split
     """
     if in_layers is None:
@@ -281,8 +289,10 @@ class WeaveGather(Layer):
     ]
     dist_max = [dist[i].prob(gaussian_memberships[i][0]) for i in range(11)]
     outputs = [dist[i].prob(x) / dist_max[i] for i in range(11)]
+    #outputs = [a + self.epsilon for a in outputs]
     outputs = tf.stack(outputs, axis=2)
-    outputs = outputs / tf.reduce_sum(outputs, axis=2, keepdims=True)
+    outputs = (outputs + self.epsilon) / tf.add(tf.reduce_sum(outputs, axis=2, 
+      keep_dims=True), self.epsilon)
     outputs = tf.reshape(outputs, [-1, self.n_input * 11])
     return outputs
 
@@ -299,7 +309,7 @@ class WeaveGather(Layer):
 
 
 class DTNNEmbedding(Layer):
-  """ TensorGraph style implementation
+  """ TensorGraph style implementation    
   """
 
   def __init__(self,
@@ -355,7 +365,7 @@ class DTNNEmbedding(Layer):
 
 
 class DTNNStep(Layer):
-  """ TensorGraph style implementation
+  """ TensorGraph style implementation    
   """
 
   def __init__(self,
@@ -451,7 +461,7 @@ class DTNNStep(Layer):
 
 
 class DTNNGather(Layer):
-  """ TensorGraph style implementation
+  """ TensorGraph style implementation    
   """
 
   def __init__(self,
@@ -555,7 +565,7 @@ class DTNNExtract(Layer):
 
 
 class DAGLayer(Layer):
-  """ TensorGraph style implementation
+  """ TensorGraph style implementation    
   """
 
   def __init__(self,
@@ -577,18 +587,16 @@ class DAGLayer(Layer):
           Number of features listed per atom.
         max_atoms: int, optional
           Maximum number of atoms in molecules.
-        layer_sizes: list of int, optional(default=[100])
-          List of hidden layer size(s):
-          length of this list represents the number of hidden layers,
-          and each element is the width of corresponding hidden layer.
+        layer_sizes: list of int, optional(default=[1000])
+          Structure of hidden layer(s)
         init: str, optional
           Weight initialization for filters.
         activation: str, optional
-          Activation function applied.
+          Activation function applied
         dropout: float, optional
-          Dropout probability in hidden layer(s).
+          Dropout probability, not supported here
         batch_size: int, optional
-          number of molecules in a batch.
+          number of molecules in a batch
         """
     super(DAGLayer, self).__init__(**kwargs)
 
@@ -681,8 +689,7 @@ class DAGLayer(Layer):
       # DAGgraph_step maps from batch_inputs to a batch of graph_features
       # of shape: (batch_size*max_atoms) * n_graph_features
       # representing the graph features of target atoms in each graph
-      batch_outputs = self.DAGgraph_step(batch_inputs, self.W_list, self.b_list,
-                                         **kwargs)
+      batch_outputs = self.DAGgraph_step(batch_inputs, self.W_list, self.b_list)
 
       # index for targe atoms
       target_index = tf.stack([tf.range(n_atoms), parents[:, count, 0]], axis=1)
@@ -697,14 +704,11 @@ class DAGLayer(Layer):
       self.out_tensor = out_tensor
     return out_tensor
 
-  def DAGgraph_step(self, batch_inputs, W_list, b_list, **kwargs):
+  def DAGgraph_step(self, batch_inputs, W_list, b_list):
     outputs = batch_inputs
     for idw, W in enumerate(W_list):
       outputs = tf.nn.xw_plus_b(outputs, W, b_list[idw])
       outputs = self.activation(outputs)
-      training = kwargs['training'] if 'training' in kwargs else 1.0
-      if not self.dropout is None:
-        outputs = tf.nn.dropout(outputs, 1.0 - self.dropout * training)
     return outputs
 
   def none_tensors(self):
@@ -735,21 +739,19 @@ class DAGGather(Layer):
         Parameters
         ----------
         n_graph_feat: int, optional
-          Number of features for each atom.
+          Number of features for each atom
         n_outputs: int, optional
           Number of features for each molecule.
         max_atoms: int, optional
           Maximum number of atoms in molecules.
         layer_sizes: list of int, optional
-          List of hidden layer size(s):
-          length of this list represents the number of hidden layers,
-          and each element is the width of corresponding hidden layer.
+          Structure of hidden layer(s)
         init: str, optional
           Weight initialization for filters.
         activation: str, optional
-          Activation function applied.
+          Activation function applied
         dropout: float, optional
-          Dropout probability in the hidden layer(s).
+          Dropout probability, not supported
         """
     super(DAGGather, self).__init__(**kwargs)
 
@@ -798,22 +800,18 @@ class DAGGather(Layer):
     # Extract atom_features
     graph_features = tf.segment_sum(atom_features, membership)
     # sum all graph outputs
-    outputs = self.DAGgraph_step(graph_features, self.W_list, self.b_list,
-                                 **kwargs)
+    outputs = self.DAGgraph_step(graph_features, self.W_list, self.b_list)
     out_tensor = outputs
     if set_tensors:
       self.variables = self.trainable_weights
       self.out_tensor = out_tensor
     return out_tensor
 
-  def DAGgraph_step(self, batch_inputs, W_list, b_list, **kwargs):
+  def DAGgraph_step(self, batch_inputs, W_list, b_list):
     outputs = batch_inputs
     for idw, W in enumerate(W_list):
       outputs = tf.nn.xw_plus_b(outputs, W, b_list[idw])
       outputs = self.activation(outputs)
-      training = kwargs['training'] if 'training' in kwargs else 1.0
-      if not self.dropout is None:
-        outputs = tf.nn.dropout(outputs, 1.0 - self.dropout * training)
     return outputs
 
   def none_tensors(self):

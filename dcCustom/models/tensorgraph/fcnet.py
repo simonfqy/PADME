@@ -1,5 +1,6 @@
 """TensorFlow implementation of fully connected networks.
 """
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
@@ -10,18 +11,25 @@ import numpy as np
 import tensorflow as tf
 import threading
 import collections
+import pdb
 
 import deepchem as dc
-from deepchem.models.tensorgraph import model_ops
-from deepchem.utils.save import log
-from deepchem.metrics import to_one_hot, from_one_hot
-from deepchem.metrics import to_one_hot
+#from dcCustom.nn import model_ops
+#from dcCustom.models.tensorgraph import model_ops
+from dcCustom.utils.save import log
+from dcCustom.metrics import to_one_hot, from_one_hot
+# from deepchem.models.tensorflow_models import TensorflowGraph
+# from deepchem.models.tensorflow_models import TensorflowGraphModel
+# from deepchem.models.tensorflow_models import TensorflowClassifier
+# from deepchem.models.tensorflow_models import TensorflowRegressor
 
-from deepchem.models.tensorgraph.tensor_graph import TensorGraph, TFWrapper
-from deepchem.models.tensorgraph.layers import Feature, Label, Weights, WeightedError, Dense, Dropout, WeightDecay, Reshape, SoftMax, SoftMaxCrossEntropy, L2Loss, ReduceSum, ReduceMean, Exp
+from dcCustom.feat.fingerprints import ComparableFingerprint
+from dcCustom.models.tensorgraph.tensor_graph import TensorGraph, TFWrapper
+from dcCustom.models.tensorgraph.layers import Feature, Label, Weights, WeightedError, \
+  Dense, Dropout, WeightDecay, Reshape, SoftMaxCrossEntropy, L2Loss, ReduceSum, Concat, \
+  BatchNormalization, SoftMax, ReduceMean, Exp
 
 logger = logging.getLogger(__name__)
-
 
 class MultitaskClassifier(TensorGraph):
 
@@ -39,8 +47,8 @@ class MultitaskClassifier(TensorGraph):
                **kwargs):
     """Create a MultitaskClassifier.
 
-    In addition to the following arguments, this class also accepts
-    all the keyword arguments from TensorGraph.
+    In addition to the following arguments, this class also accepts all the keyword arguments
+    from TensorGraph.
 
     Parameters
     ----------
@@ -49,19 +57,14 @@ class MultitaskClassifier(TensorGraph):
     n_features: int
       number of features
     layer_sizes: list
-      the size of each dense layer in the network.  The length of
-      this list determines the number of layers.
+      the size of each dense layer in the network.  The length of this list determines the number of layers.
     weight_init_stddevs: list or float
-      the standard deviation of the distribution to use for weight
-      initialization of each layer.  The length of this list should
-      equal len(layer_sizes).  Alternatively this may be a single
-      value instead of a list, in which case the same value is used
-      for every layer.
+      the standard deviation of the distribution to use for weight initialization of each layer.  The length
+      of this list should equal len(layer_sizes).  Alternatively this may be a single value instead of a list,
+      in which case the same value is used for every layer.
     bias_init_consts: list or loat
-      the value to initialize the biases in each layer to.  The
-      length of this list should equal len(layer_sizes).
-      Alternatively this may be a single value instead of a list, in
-      which case the same value is used for every layer.
+      the value to initialize the biases in each layer to.  The length of this list should equal len(layer_sizes).
+      Alternatively this may be a single value instead of a list, in which case the same value is used for every layer.
     weight_decay_penalty: float
       the magnitude of the weight decay penalty to use
     weight_decay_penalty_type: str
@@ -80,6 +83,7 @@ class MultitaskClassifier(TensorGraph):
     self.n_tasks = n_tasks
     self.n_features = n_features
     self.n_classes = n_classes
+    self.mode = 'classification'
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
       weight_init_stddevs = [weight_init_stddevs] * n_layers
@@ -91,12 +95,14 @@ class MultitaskClassifier(TensorGraph):
       activation_fns = [activation_fns] * n_layers
 
     # Add the input features.
-
     mol_features = Feature(shape=(None, n_features))
-    prev_layer = mol_features
+    prot_features = Feature(shape=(None, self.prot_desc_length))
+    mol_features = Dropout(self.dropout_prob, in_layers=mol_features)
+    prot_features = Dropout(self.dropout_prob, in_layers=prot_features)
+    prev_layer = Concat(in_layers=[mol_features, prot_features])
 
     # Add the dense layers
-
+    '''
     for size, weight_stddev, bias_const, dropout, activation_fn in zip(
         layer_sizes, weight_init_stddevs, bias_init_consts, dropouts,
         activation_fns):
@@ -111,7 +117,11 @@ class MultitaskClassifier(TensorGraph):
       if dropout > 0.0:
         layer = Dropout(dropout, in_layers=[layer])
       prev_layer = layer
-
+    '''
+    for _ in range(self.num_dense_layer):
+      dense_layer = Dense(in_layers=[prev_layer], out_channels=self.dense_cmb_layer_size,
+        activation_fn=activation_fns[0])
+      prev_layer = BatchNormalization(epsilon=1e-5, in_layers=[dense_layer])
     # Compute the loss function for each label.
 
     logits = Reshape(
@@ -150,23 +160,22 @@ class MultitaskClassifier(TensorGraph):
                                                      -1, self.n_tasks,
                                                      self.n_classes)
         if X_b is not None:
-          feed_dict[self.features[0]] = X_b
+          mol_list = X_b[:, 0]
+          mol_array = np.array([mol.get_array() for mol in mol_list])
+          feed_dict[self.features[0]] = mol_array
+          prot_list = X_b[:, 1]
+          prot_name_list = [prot.get_name() for prot in prot_list]
+          prot_desc = [self.prot_desc_dict[prot_name] for prot_name in prot_name_list]
+          prot_desc = np.array(prot_desc)
+          prot_desc_reshaped = prot_desc.reshape((prot_desc.shape[0], prot_desc.shape[2]))
+          feed_dict[self.features[1]] = prot_desc_reshaped
         if w_b is not None and not predict:
           feed_dict[self.task_weights[0]] = w_b
         yield feed_dict
 
-  def create_estimator_inputs(self, feature_columns, weight_column, features,
-                              labels, mode):
-    tensors = {}
-    for layer, column in zip(self.features, feature_columns):
-      tensors[layer] = tf.feature_column.input_layer(features, [column])
-    if weight_column is not None:
-      tensors[self.task_weights[0]] = tf.feature_column.input_layer(
-          features, [weight_column])
-    if labels is not None:
-      tensors[self.labels[0]] = tf.one_hot(
-          tf.cast(labels, tf.int32), self.n_classes)
-    return tensors
+  # TODO: it is just a stub.
+  def create_estimator_inputs(self, feature_columns, weight_column, features, labels, mode):
+    return None
 
 
 class MultitaskRegressor(TensorGraph):
@@ -216,12 +225,12 @@ class MultitaskRegressor(TensorGraph):
       len(layer_sizes).  Alternatively this may be a single value instead of a list, in which case the
       same value is used for every layer.
     uncertainty: bool
-      if True, include extra outputs and loss terms to enable the uncertainty
-      in outputs to be predicted
+      if True, include extra outputs and loss terms to enable the uncertainty in outputs to be predicted.
     """
     super(MultitaskRegressor, self).__init__(**kwargs)
     self.n_tasks = n_tasks
     self.n_features = n_features
+    self.mode = 'regression'
     n_layers = len(layer_sizes)
     if not isinstance(weight_init_stddevs, collections.Sequence):
       weight_init_stddevs = [weight_init_stddevs] * (n_layers + 1)
@@ -231,18 +240,17 @@ class MultitaskRegressor(TensorGraph):
       dropouts = [dropouts] * n_layers
     if not isinstance(activation_fns, collections.Sequence):
       activation_fns = [activation_fns] * n_layers
-    if uncertainty:
-      if any(d == 0.0 for d in dropouts):
-        raise ValueError(
-            'Dropout must be included in every layer to predict uncertainty')
 
     # Add the input features.
 
     mol_features = Feature(shape=(None, n_features))
-    prev_layer = mol_features
+    prot_features = Feature(shape=(None, self.prot_desc_length))
+    mol_features = Dropout(self.dropout_prob, in_layers=mol_features)
+    prot_features = Dropout(self.dropout_prob, in_layers=prot_features)
+    prev_layer = Concat(in_layers=[mol_features, prot_features])
 
     # Add the dense layers
-
+    '''
     for size, weight_stddev, bias_const, dropout, activation_fn in zip(
         layer_sizes, weight_init_stddevs, bias_init_consts, dropouts,
         activation_fns):
@@ -257,6 +265,11 @@ class MultitaskRegressor(TensorGraph):
       if dropout > 0.0:
         layer = Dropout(dropout, in_layers=[layer])
       prev_layer = layer
+    '''
+    for _ in range(self.num_dense_layer):
+      dense_layer = Dense(in_layers=[prev_layer], out_channels=self.dense_cmb_layer_size,
+        activation_fn=activation_fns[0])
+      prev_layer = BatchNormalization(epsilon=1e-5, in_layers=[dense_layer]) 
 
     # Compute the loss function for each label.
 
@@ -276,18 +289,16 @@ class MultitaskRegressor(TensorGraph):
     labels = Label(shape=(None, n_tasks, 1))
     weights = Weights(shape=(None, n_tasks, 1))
     if uncertainty:
-      log_var = Reshape(
-          shape=(-1, n_tasks, 1),
-          in_layers=[
-              Dense(
-                  in_layers=[prev_layer],
-                  out_channels=n_tasks,
-                  weights_initializer=TFWrapper(
-                      tf.truncated_normal_initializer,
-                      stddev=weight_init_stddevs[-1]),
-                  biases_initializer=TFWrapper(
-                      tf.constant_initializer, value=0.0))
-          ])
+      log_var = Reshape(shape=(-1, n_tasks, 1),
+        in_layers=[Dense(
+          in_layers=[prev_layer],
+          out_channels=n_tasks,
+          weights_initializer=TFWrapper(
+            tf.truncated_normal_initializer,
+            stddev=weight_init_stddevs[-1]),
+          biases_initializer=TFWrapper(
+            tf.constant_initializer, value=0.0))
+        ])
       var = Exp(log_var)
       self.add_variance(var)
       diff = labels - output
@@ -301,10 +312,41 @@ class MultitaskRegressor(TensorGraph):
           weight_decay_penalty_type,
           in_layers=[weighted_loss])
     self.set_loss(weighted_loss)
+    
+    
+  def default_generator(self,
+                        dataset,
+                        epochs=1,
+                        predict=False,
+                        deterministic=True,
+                        pad_batches=True):
+    for epoch in range(epochs):
+      for (X_b, y_b, w_b, ids_b) in dataset.iterbatches(
+          batch_size=self.batch_size,
+          deterministic=deterministic,
+          pad_batches=pad_batches):
+        feed_dict = dict()
+        if y_b is not None and not predict:
+          feed_dict[self.labels[0]] = y_b.reshape(-1, self.n_tasks, 1)
+        if X_b is not None:
+          mol_list = X_b[:, 0]
+          mol_array = np.array([mol.get_array() for mol in mol_list])
+          feed_dict[self.features[0]] = mol_array
+          #pdb.set_trace()
+          prot_list = X_b[:, 1]
+          prot_name_list = [prot.get_name() for prot in prot_list]
+          prot_desc = [self.prot_desc_dict[prot_name] for prot_name in prot_name_list]
+          prot_desc = np.array(prot_desc)
+          prot_desc_reshaped = prot_desc.reshape((prot_desc.shape[0], prot_desc.shape[2]))
+          #feed_dict[self.features[1]] = np.squeeze(np.array(prot_desc))
+          feed_dict[self.features[1]] = prot_desc_reshaped
+        if w_b is not None and not predict:
+          feed_dict[self.task_weights[0]] = w_b
+        yield feed_dict
 
 
 class MultitaskFitTransformRegressor(MultitaskRegressor):
-  """Implements a MultitaskRegressor that performs on-the-fly transformation during fit/predict.
+  """Implements a MultiTaskRegressor that performs on-the-fly transformation during fit/predict.
 
   Example:
 
@@ -320,7 +362,7 @@ class MultitaskFitTransformRegressor(MultitaskRegressor):
   >>> model = dc.models.MultitaskFitTransformRegressor(n_tasks, [n_features, n_features],
   ...     dropouts=[0.], learning_rate=0.003, weight_init_stddevs=[np.sqrt(6)/np.sqrt(1000)],
   ...     batch_size=n_samples, fit_transformers=fit_transformers, n_evals=1)
-  >>> model.n_features
+  >>> model.n_features 
   12
   """
 
@@ -333,7 +375,7 @@ class MultitaskFitTransformRegressor(MultitaskRegressor):
                **kwargs):
     """Create a MultitaskFitTransformRegressor.
 
-    In addition to the following arguments, this class also accepts all the keywork arguments
+    In addition to the following arguments, this class also accepts all the keyword arguments
     from MultitaskRegressor.
 
     Parameters

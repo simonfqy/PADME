@@ -3,6 +3,7 @@
 Large amounts of code borrowed from Keras. Will try to incorporate into
 DeepChem properly.
 """
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
@@ -11,7 +12,6 @@ import sys
 import traceback
 import numpy as np
 import tensorflow as tf
-import tensorflow.contrib.eager as tfe
 from tensorflow.python.training import moving_averages
 from collections import defaultdict
 
@@ -23,36 +23,28 @@ def _to_tensor(x, dtype):
   return x
 
 
-def create_variable(value, dtype=None, name=None, trainable=True):
-  """Create a tf.Variable or tfe.Variable, depending on the current mode."""
-  if tfe.in_eager_mode():
-    return tfe.Variable(value, dtype=dtype, name=name, trainable=trainable)
-  else:
-    return tf.Variable(value, dtype=dtype, name=name, trainable=trainable)
-
-
 def ones(shape, dtype=None, name=None):
   """Instantiates an all-ones tensor variable and returns it.
 
   Parameters
   ----------
-  shape: Tuple of integers, shape of returned Tensorflow variable.
+  shape: Tuple of integers, shape of returned TensorFlow variable.
   dtype: Tensorflow dtype
-  name: String, name of returned Tensorflow variable.
+  name: String, name of returned TensorFlow variable.
 
   Returns
   -------
-  A Tensorflow variable, filled with `1.0`.
+  A TensorFlow variable, filled with `1.0`.
   """
   if dtype is None:
     dtype = tf.float32
   shape = tuple(map(int, shape))
-  return create_variable(
+  return tf.Variable(
       tf.constant_initializer(1., dtype=dtype)(shape), dtype, name)
 
 
 def cast_to_floatx(x):
-  """Cast a Numpy array to the default Tensorflow float type.
+  """Cast a Numpy array to the default TensorFlow float type.
 
   Parameters
   ----------
@@ -74,7 +66,7 @@ def moving_average_update(variable, value, momentum):
 
 
 def int_shape(x):
-  """Returns the shape of a Tensorflow tensor or a Tensorflow variable as a tuple of
+  """Returns the shape of a TensorFlow tensor or a TensorFlow variable as a tuple of
   integers or None entries.
 
   Arguments
@@ -202,7 +194,7 @@ def get_ndim(x):
 
 
 def get_dtype(x):
-  """Returns the dtype of a Tensorflow tensor or variable, as a string.
+  """Returns the dtype of a TensorFlow tensor or variable, as a string.
 
   Parameters
   ----------
@@ -268,7 +260,7 @@ def random_uniform_variable(shape,
     seed = np.random.randint(10e8)
   value = tf.random_uniform_initializer(
       low, high, dtype=dtype, seed=seed)(shape)
-  return create_variable(value, dtype=dtype, name=name)
+  return tf.Variable(value, dtype=dtype, name=name)
 
 
 def random_normal_variable(shape,
@@ -277,16 +269,16 @@ def random_normal_variable(shape,
                            dtype=tf.float32,
                            name=None,
                            seed=None):
-  """Instantiates an Tensorflow variable filled with
+  """Instantiates an TensorFlow variable filled with
   samples drawn from a normal distribution and returns it.
 
   Parameters
   ----------
-  shape: Tuple of integers, shape of returned Tensorflow variable.
+  shape: Tuple of integers, shape of returned TensorFlow variable.
   mean: Float, mean of the normal distribution.
   scale: Float, standard deviation of the normal distribution.
   dtype: Tensorflow dtype
-  name: String, name of returned Tensorflow variable.
+  name: String, name of returned TensorFlow variable.
   seed: Integer, random seed.
 
   Returns
@@ -299,7 +291,7 @@ def random_normal_variable(shape,
     seed = np.random.randint(10e8)
   value = tf.random_normal_initializer(
       mean, scale, dtype=dtype, seed=seed)(shape)
-  return create_variable(value, dtype=dtype, name=name)
+  return tf.Variable(value, dtype=dtype, name=name)
 
 
 def max(x, axis=None, keepdims=False):
@@ -347,7 +339,7 @@ def categorical_crossentropy(output, target, from_logits=False):
   # TODO(rbharath): Should probably swap this over to tf mode.
   """
   # Note: tf.nn.softmax_cross_entropy_with_logits
-  # expects logits, Tensorflow expects probabilities.
+  # expects logits, TensorFlow expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
     output /= tf.reduce_sum(
@@ -371,7 +363,7 @@ def sparse_categorical_crossentropy(output, target, from_logits=False):
   and a target tensor, where the target is an integer tensor.
   """
   # Note: tf.nn.softmax_cross_entropy_with_logits
-  # expects logits, Tensorflow expects probabilities.
+  # expects logits, TensorFlow expects probabilities.
   if not from_logits:
     epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
     output = tf.clip_by_value(output, epsilon, 1 - epsilon)
@@ -407,7 +399,7 @@ def binary_crossentropy(output, target, from_logits=False):
       A tensor.
   """
   # Note: tf.nn.softmax_cross_entropy_with_logits
-  # expects logits, Tensorflow expects probabilities.
+  # expects logits, TensorFlow expects probabilities.
   if not from_logits:
     # transform back to logits
     epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
@@ -446,16 +438,16 @@ def zeros(shape, dtype=tf.float32, name=None):
 
   Parameters
   ----------
-  shape: Tuple of integers, shape of returned Tensorflow variable
+  shape: Tuple of integers, shape of returned TensorFlow variable
   dtype: Tensorflow dtype
-  name: String, name of returned Tensorflow variable
+  name: String, name of returned TensorFlow variable
 
   Returns
   -------
-  A variable (including Tensorflow metadata), filled with `0.0`.
+  A variable (including TensorFlow metadata), filled with `0.0`.
   """
   shape = tuple(map(int, shape))
-  return create_variable(
+  return tf.Variable(
       tf.constant_initializer(0., dtype=dtype)(shape), dtype, name)
 
 
@@ -683,7 +675,7 @@ def add_bias(tensor, init=None, name=None):
   if init is None:
     init = tf.zeros([tensor.get_shape()[-1].value])
   with tf.name_scope(name, tensor.op.name, [tensor]):
-    b = create_variable(init, name='b')
+    b = tf.Variable(init, name='b')
     return tf.nn.bias_add(tensor, b)
 
 
@@ -761,8 +753,8 @@ def fully_connected_layer(tensor,
     bias_init = tf.zeros([size])
 
   with tf.name_scope(name, 'fully_connected', [tensor]):
-    w = create_variable(weight_init, name='w', dtype=tf.float32)
-    b = create_variable(bias_init, name='b', dtype=tf.float32)
+    w = tf.Variable(weight_init, name='w', dtype=tf.float32)
+    b = tf.Variable(bias_init, name='b', dtype=tf.float32)
     return tf.nn.xw_plus_b(tensor, w, b)
 
 

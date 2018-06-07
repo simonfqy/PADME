@@ -7,30 +7,34 @@ import time
 import logging
 import numpy as np
 import tensorflow as tf
+import math
+import pdb
 from tensorflow.python.pywrap_tensorflow_internal import NewCheckpointReader
-import tensorflow.contrib.eager as tfe
+from tensorflow.python import debug as tf_debug
 
-from deepchem.data import NumpyDataset
-from deepchem.models.models import Model
-from deepchem.models.tensorgraph.layers import InputFifoQueue, Label, Feature, Weights, Constant, Input
-from deepchem.models.tensorgraph.model_ops import create_variable
+from dcCustom.data import NumpyDataset
+from dcCustom.models.models import Model
+from dcCustom.models.tensorgraph.layers import InputFifoQueue, Label, Feature, \
+  Weights, Constant, Dense
 from deepchem.models.tensorgraph.optimizers import Adam
 from deepchem.trans import undo_transforms
-from deepchem.utils.evaluate import GeneratorEvaluator
+from dcCustom.utils.evaluate import GeneratorEvaluator
 
 logger = logging.getLogger(__name__)
-
 
 class TensorGraph(Model):
 
   def __init__(self,
                tensorboard=False,
-               tensorboard_log_frequency=100,
+               tensorboard_log_frequency=40,
                batch_size=100,
                random_seed=None,
                use_queue=True,
                graph=None,
                learning_rate=0.001,
+               dropout_prob = 0.5,
+               num_dense_layer = 3,
+               dense_cmb_layer_size = 256,
                configproto=None,
                **kwargs):
     """
@@ -69,6 +73,10 @@ class TensorGraph(Model):
     self.queue_installed = False
     self.optimizer = Adam(
         learning_rate=learning_rate, beta1=0.9, beta2=0.999, epsilon=1e-7)
+    self.dropout_prob = dropout_prob
+    # The following two variables are for hyperparameter tuning purpose.
+    self.num_dense_layer = num_dense_layer
+    self.dense_cmb_layer_size = dense_cmb_layer_size
     self.configproto = configproto
 
     # Singular place to hold Tensor objects which don't serialize
@@ -117,12 +125,27 @@ class TensorGraph(Model):
 
   def fit(self,
           dataset,
+          valid_dataset=None,
           nb_epoch=10,
           max_checkpoints_to_keep=5,
           checkpoint_interval=1000,
           deterministic=False,
           restore=False,
           submodel=None,
+          metric=None,
+          direction=None,
+          early_stopping=True,
+          no_r2=False,
+          evaluate_freq = 3, # Number of training epochs before evaluating
+          # for early stopping.
+          patience = 3,
+          transformers=None,
+          per_task_metrics=False,
+          tasks=None,
+          verbose_search=False,
+          log_file=None,
+          aggregated_tasks=[],
+          model_name=None,
           **kwargs):
     """Train this model on a dataset.
 
@@ -146,11 +169,153 @@ class TensorGraph(Model):
     submodel: Submodel
       an alternate training objective to use.  This should have been created by
       calling create_submodel().
-    """
-    return self.fit_generator(
-        self.default_generator(
-            dataset, epochs=nb_epoch, deterministic=deterministic),
-        max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
+    """    
+    if not early_stopping:
+      return self.fit_generator(
+          self.default_generator(
+              dataset, epochs=nb_epoch, deterministic=deterministic),
+          max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
+    # Using early stopping.
+    
+    assert evaluate_freq > 0
+    assert direction is not None
+    assert checkpoint_interval > 0
+    assert transformers is not None
+    if verbose_search:
+      assert log_file is not None
+    
+    iterations=math.ceil(nb_epoch/evaluate_freq)
+    if metric is None:
+      if self.mode == 'regression':
+        metric = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean,
+          arithmetic_mean=True),
+          dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean,
+          arithmetic_mean=True),
+          dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean, arithmetic_mean=True)]
+        direction = False
+      elif self.mode == 'classification':
+        metric = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean,
+          arithmetic_mean=True),
+          dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean,
+          arithmetic_mean=True)]
+        direction = True
+    
+    self.temp_model_dir = self.model_dir + "/temp"
+    wait_time = 0
+    
+    best_score = math.inf * -1
+        
+    with self._get_tf("Graph").as_default():
+      optimal_epoch = 0
+      epoch_count = 0
+      for i in range(iterations):
+        num_epoch = evaluate_freq
+        if i == (iterations - 1):
+          num_epoch = nb_epoch - evaluate_freq * i
+        # Temporarily overriding the path of saving.
+        self.save_file = "%s/%s" % (self.temp_model_dir, "model")
+        self.fit_generator(
+            self.default_generator(
+                dataset, epochs=num_epoch, deterministic=deterministic),
+            max_checkpoints_to_keep, checkpoint_interval, restore, submodel)
+        saver = tf.train.Saver(
+              max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
+        if not per_task_metrics:
+          valid_score = self.evaluate(valid_dataset, metric, transformers, no_r2=no_r2,
+            per_task_metrics=per_task_metrics, tasks=tasks, model_name=model_name) 
+            
+        else:
+          valid_score, per_task_sc_val = self.evaluate(valid_dataset, metric,
+            transformers, per_task_metrics=per_task_metrics, tasks=tasks, no_r2=no_r2,
+            model_name=model_name)
+
+        val_sc = 0
+        per_task_sc = [0.0 for task in aggregated_tasks]  
+        # we use a combination of metrics.
+        if self.mode == 'regression':          
+          direction = False
+          for mtc in metric:
+            mtc_name = mtc.metric.__name__
+            composite_mtc_name = mtc.name
+            if mtc_name == 'rms_score': 
+              val_sc += valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+            if mtc_name == 'r2_score' or mtc_name == 'pearson_r2_score':
+              if no_r2:
+                continue
+              val_sc += -0.5 * valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base - 0.5 * incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+            if mtc_name == 'concordance_index':
+              val_sc += -valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base - incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+        elif self.mode == 'classification':          
+          direction = True
+          for mtc in metric:
+            mtc_name = mtc.metric.__name__
+            composite_mtc_name = mtc.name
+            if mtc_name == 'roc_auc_score': 
+              val_sc += valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+            if mtc_name == 'prc_auc_score':
+              val_sc += valid_score[composite_mtc_name]
+              if per_task_metrics:
+                per_task_sc = [base + incr for base, incr in zip(per_task_sc, 
+                  per_task_sc_val[composite_mtc_name])]
+
+        if per_task_metrics:
+          #per_task_sc_val = per_task_sc_val[metric[0].name]          
+          if tasks is None:
+            tasks=list(range(1, len(per_task_sc)+1))
+          for task, task_sc in zip(aggregated_tasks, per_task_sc):            
+            print('The score for task %s is %g' % (str(task), task_sc))
+        print('The overall validation score is: ', val_sc)
+        # Resuming the path of saving.
+        self.save_file = "%s/%s" % (self.model_dir, "model")
+        wait_time += 1
+        epoch_count += num_epoch
+        if not direction:
+          val_sc = -1 * val_sc        
+      
+        if val_sc > best_score:
+          best_score = val_sc
+          wait_time = 0
+          optimal_epoch = epoch_count
+          saver.save(self.session, self.save_file, global_step=self.global_step)
+          if verbose_search:
+            output_val_sc = val_sc
+            if not direction:
+              output_val_sc = -1 * output_val_sc
+            with open(log_file, 'a') as f:
+              f.write("Currently at epoch number: " + str(epoch_count))
+              f.write('\n')
+              # Record performances
+              f.write("Current best validation score: " + str(output_val_sc))
+              f.write('\n')
+              if per_task_metrics:         
+                if tasks is None:
+                  tasks=list(range(1, len(per_task_sc)+1))
+                for task, task_sc in zip(aggregated_tasks, per_task_sc):            
+                  f.write('The score for task %s is %g;' % (str(task), task_sc))
+                f.write('\n')
+        
+        if (wait_time > patience):
+          break       
+      self.restore() #This only restores from the self.model_dir
+      if not direction:
+        best_score = -1 * best_score
+    return [optimal_epoch, best_score]
 
   def fit_generator(self,
                     feed_dict_generator,
@@ -188,34 +353,15 @@ class TensorGraph(Model):
       loss = self.loss
       if submodel is not None and submodel.loss is not None:
         loss = submodel.loss
-      if tfe.in_eager_mode():
-        # In eager mode we want an optimizer and a function to compute the
-        # gradient of the loss.
-
-        submodel_vars = None
-        if submodel is None:
-          optimizer = self._get_tf("Optimizer")
-        else:
-          optimizer = submodel.create_optimizer()
-          if submodel.layers is not None:
-            submodel_vars = set()
-            for layer in submodel.layers:
-              for var in layer.variables:
-                submodel_vars.add(var)
-        val_grad_fn = tfe.implicit_value_and_gradients(
-            lambda x: self._run_graph([loss], x, True)[0])
+      if submodel is None:
+        train_op = self._get_tf('train_op')
       else:
-        # In graph mode we want a training operation.
-
-        if submodel is None:
-          train_op = self._get_tf('train_op')
-        else:
-          train_op = submodel.get_train_op()
+        train_op = submodel.get_train_op()
+        if submodel.loss is not None:
+          loss = submodel.loss
       if checkpoint_interval > 0:
         saver = tf.train.Saver(
-            self.get_variables(),
-            max_to_keep=max_checkpoints_to_keep,
-            save_relative_paths=True)
+            max_to_keep=max_checkpoints_to_keep, save_relative_paths=True)
       if restore:
         self.restore()
       avg_loss, n_averaged_batches = 0.0, 0.0
@@ -242,36 +388,28 @@ class TensorGraph(Model):
         n_samples += 1
         should_log = (self.tensorboard and
                       n_samples % self.tensorboard_log_frequency == 0)
-        if tfe.in_eager_mode():
-          value, grads_and_vars = val_grad_fn(feed_dict)
-          if submodel_vars is not None:
-            grads_and_vars = [
-                x for x in grads_and_vars if x[1] in submodel_vars
-            ]
-          optimizer.apply_gradients(grads_and_vars)
-          avg_loss += value
-        else:
-          fetches = [train_op, loss.out_tensor]
-          if should_log:
-            fetches.append(self._get_tf("summary_op"))
-          fetched_values = self.session.run(fetches, feed_dict=feed_dict)
-          if should_log:
-            self._log_tensorboard(fetched_values[2])
-          avg_loss += fetched_values[1]
+        fetches = [train_op, loss.out_tensor]
+        
+        if should_log:
+          fetches.append(self._get_tf("summary_op"))
+        fetched_values = self.session.run(fetches, feed_dict=feed_dict)
+        if should_log:
+          self._log_tensorboard(fetched_values[2])
+        avg_loss += fetched_values[1]
         n_averaged_batches += 1
         self.global_step += 1
         if checkpoint_interval > 0 and self.global_step % checkpoint_interval == checkpoint_interval - 1:
           saver.save(self.session, self.save_file, global_step=self.global_step)
           avg_loss = float(avg_loss) / n_averaged_batches
-          logger.info('Ending global_step %d: Average loss %g' %
-                      (self.global_step, avg_loss))
+          logger.info('Ending global_step %d: Average loss %g' % (self.global_step,
+                                                            avg_loss))
           avg_loss, n_averaged_batches = 0.0, 0.0
       if n_averaged_batches > 0:
         avg_loss = float(avg_loss) / n_averaged_batches
       if checkpoint_interval > 0:
         if n_averaged_batches > 0:
-          logger.info('Ending global_step %d: Average loss %g' %
-                      (self.global_step, avg_loss))
+          logger.info('Ending global_step %d: Average loss %g' % (self.global_step,
+                                                            avg_loss))
         saver.save(self.session, self.save_file, global_step=self.global_step)
         time2 = time.time()
         logger.info("TIMING: model fitting took %0.3f s" % (time2 - time1))
@@ -324,52 +462,15 @@ class TensorGraph(Model):
         for (initial_state, zero_state) in zip(self.rnn_initial_states,
                                                self.rnn_zero_states):
           feed_dict[initial_state] = zero_state
+        
         yield feed_dict
-
-  def __call__(self, *inputs, **kwargs):
-    """Execute the model in eager mode to compute outputs as a function of inputs.
-
-    This is very similar to predict_on_batch(), except that it returns the outputs
-    as tensors rather than numpy arrays.  That means you can compute the graph's
-    outputs, then do additional calculations based on them, and gradients will
-    be tracked correctly through the whole process.
-
-    Parameters
-    ----------
-    inputs: tensors
-      the values to use for the model's features.  The number of inputs must
-      exactly match the length of the model's `features` property.  The values
-      may be tensors, numpy arrays, or anything else that can be converted to
-      tensors of the correct shape.
-    outputs: list of Layers
-      the output layers to compute.  If this is omitted, self.outputs is used
-      (that is, all outputs that have been added by calling add_output()).
-
-    Returns
-    -------
-    The output tensors, or a list of tensors if multiple outputs were requested.
-    """
-    if len(inputs) != len(self.features):
-      raise ValueError('Expected %d inputs, received %d' % len(self.features),
-                       len(inputs))
-    # TODO Once we drop Python 2 support, turn outputs into a proper keyword arg
-    # instead of using the **kwargs hack.
-    if 'outputs' in kwargs:
-      outputs = kwargs['outputs']
-    else:
-      outputs = self.outputs
-    feed_dict = dict(zip(self.features, inputs))
-    results = self._run_graph(outputs, feed_dict, False)
-    if len(results) == 1:
-      return results[0]
-    return results
 
   def _predict(self, generator, transformers, outputs, uncertainty):
     """
     Predict outputs for data provided by a generator.
 
-    This is the private implementation of prediction.  Do not call it directly.
-    Instead call one of the public prediction methods.
+    This is the private implementation of prediction. Do not call it directly.
+    Instead, call one of the public prediction methods.
 
     Parameters
     ----------
@@ -384,7 +485,7 @@ class TensorGraph(Model):
       of ndarrays.
     uncertainty: bool
       specifies whether this is being called as part of estimating uncertainty.
-      If True, it sets the training flag so that dropout will be enabled, and
+      If True, it sets the training flag so that dropout will be enabled, and 
       returns the values of the uncertainty outputs.
     Returns:
       y_pred: numpy ndarray of shape (n_samples, n_classes*n_tasks)
@@ -397,10 +498,10 @@ class TensorGraph(Model):
       outputs = [outputs]
     if uncertainty:
       if len(self.variances) == 0:
-        raise ValueError('This model cannot compute uncertainties')
+        raise ValueError('This model cannot compute uncertainties.')
       if len(self.variances) != len(outputs):
         raise ValueError(
-            'The number of variances must exactly match the number of outputs')
+          'The number of variances must exactly match the number of outputs.')
       tensors = outputs + self.variances
     else:
       tensors = outputs
@@ -417,7 +518,7 @@ class TensorGraph(Model):
             args=(self, generator, self._get_tf("Graph"), self.session,
                   n_enqueued, final_sample))
         enqueue_thread.start()
-      for feed_dict in self._create_feed_dicts(generator, uncertainty):
+      for feed_dict in self._create_feed_dicts(generator, False):
         if self.queue_installed:
           # Don't let this thread get ahead of the enqueue thread, since if
           # we try to read more batches than the total number that get queued,
@@ -429,9 +530,7 @@ class TensorGraph(Model):
           if n_samples == final_sample[0]:
             break
         n_samples += 1
-        feed_results = self._run_graph(tensors, feed_dict, uncertainty)
-        if tfe.in_eager_mode():
-          feed_results = [f.numpy() for f in feed_results]
+        feed_results = self.session.run(tensors, feed_dict=feed_dict)
         if len(feed_results) > 1:
           if len(transformers):
             raise ValueError("Does not support transformations "
@@ -490,32 +589,9 @@ class TensorGraph(Model):
     return self.predict_on_generator(generator, transformers, outputs)
 
   def predict_uncertainty_on_batch(self, X, masks=50):
-    """
-    Predict the model's outputs, along with the uncertainty in each one.
-
-    The uncertainty is computed as described in https://arxiv.org/abs/1703.04977.
-    It involves repeating the prediction many times with different dropout masks.
-    The prediction is computed as the average over all the predictions.  The
-    uncertainty includes both the variation among the predicted values (epistemic
-    uncertainty) and the model's own estimates for how well it fits the data
-    (aleatoric uncertainty).  Not all models support uncertainty prediction.
-
-    Parameters
-    ----------
-    X: ndarray
-      the input data, as a Numpy array.
-    masks: int
-      the number of dropout masks to average over
-
-    Returns
-    -------
-    for each output, a tuple (y_pred, y_std) where y_pred is the predicted
-    value of the output, and each element of y_std estimates the standard
-    deviation of the corresponding element of y_pred
-    """
     dataset = NumpyDataset(X=X, y=None)
     return self.predict_uncertainty(dataset, masks)
-
+  
   def predict(self, dataset, transformers=[], outputs=None):
     """
     Uses self to make predictions on provided Dataset object.
@@ -527,8 +603,8 @@ class TensorGraph(Model):
     transformers: list
       List of dc.trans.Transformers.
     outputs: object
-      If outputs is None, then will assume outputs=self.outputs. If outputs is
-      a Layer/Tensor, then will evaluate and return as a single ndarray. If
+      If outputs is None, then will assume outputs = self.outputs. If outputs is 
+      a Layer/Tensor, then will evaluate and return as a single ndarray. If 
       outputs is a list of Layers/Tensors, will return a list of ndarrays.
 
     Returns
@@ -538,57 +614,9 @@ class TensorGraph(Model):
     generator = self.default_generator(dataset, predict=True, pad_batches=False)
     return self.predict_on_generator(generator, transformers, outputs)
 
+  # TODO: I left it as a stub. Need to populate it if required.
   def predict_uncertainty(self, dataset, masks=50):
-    """
-    Predict the model's outputs, along with the uncertainty in each one.
-
-    The uncertainty is computed as described in https://arxiv.org/abs/1703.04977.
-    It involves repeating the prediction many times with different dropout masks.
-    The prediction is computed as the average over all the predictions.  The
-    uncertainty includes both the variation among the predicted values (epistemic
-    uncertainty) and the model's own estimates for how well it fits the data
-    (aleatoric uncertainty).  Not all models support uncertainty prediction.
-
-    Parameters
-    ----------
-    dataset: dc.data.Dataset
-      Dataset to make prediction on
-    masks: int
-      the number of dropout masks to average over
-
-    Returns
-    -------
-    for each output, a tuple (y_pred, y_std) where y_pred is the predicted
-    value of the output, and each element of y_std estimates the standard
-    deviation of the corresponding element of y_pred
-    """
-    sum_pred = []
-    sum_sq_pred = []
-    sum_var = []
-    for i in range(masks):
-      generator = self.default_generator(
-          dataset, predict=True, pad_batches=False)
-      results = self._predict(generator, [], self.outputs, True)
-      if len(sum_pred) == 0:
-        for p, v in results:
-          sum_pred.append(p)
-          sum_sq_pred.append(p * p)
-          sum_var.append(v)
-      else:
-        for j, (p, v) in enumerate(results):
-          sum_pred[j] += p
-          sum_sq_pred[j] += p * p
-          sum_var[j] += v
-    output = []
-    std = []
-    for i in range(len(sum_pred)):
-      p = sum_pred[i] / masks
-      output.append(p)
-      std.append(np.sqrt(sum_sq_pred[i] / masks - p * p + sum_var[i] / masks))
-    if len(output) == 1:
-      return (output[0], std[0])
-    else:
-      return zip(output, std)
+    return None
 
   def topsort(self):
 
@@ -611,51 +639,6 @@ class TensorGraph(Model):
   def build(self):
     if self.built:
       return
-    if tfe.in_eager_mode():
-      # In eager mode, we need to execute every layer once to ensure its variables
-      # have been created.
-
-      def build_layers(layer, tensors):
-        if layer in tensors:
-          return tensors[layer]
-        inputs = [build_layers(input, tensors) for input in layer.in_layers]
-        if isinstance(layer, Input):
-          # We can't execute Input layers in eager mode, since they would try
-          # to create placeholders.  Instead create a tensor of the correct
-          # size and type.
-          shape = [1 if s is None else s for s in layer.shape]
-          tensor = tf.zeros(shape, layer.dtype)
-        else:
-          with tf.name_scope(layer.name):
-            tensor = layer.create_tensor(in_layers=inputs, set_tensors=False)
-        tensors[layer] = tensor
-        return tensor
-
-      tensors = {}
-      with self._get_tf("Graph").as_default():
-        # Build the layers.
-
-        build_layers(self.loss, tensors)
-        for output in self.outputs:
-          build_layers(output, tensors)
-        for variance in self.variances:
-          build_layers(variance, tensors)
-        for submodel in self.submodels:
-          build_layers(submodel.loss, tensors)
-
-        # Initialize variables.
-
-        for layer in self.layers.values():
-          if layer.variable_values is not None:
-            for var, val in zip(layer.variables, layer.variable_values):
-              var.assign(val)
-      self.session = None
-      self._training_placeholder = None
-      self.built = True
-      return
-
-    # In graph mode we need to create the computation graph.
-
     with self._get_tf("Graph").as_default():
       self._training_placeholder = tf.placeholder(dtype=tf.float32, shape=())
       if self.random_seed is not None:
@@ -667,8 +650,15 @@ class TensorGraph(Model):
           self.rnn_initial_states += layer.rnn_initial_states
           self.rnn_final_states += layer.rnn_final_states
           self.rnn_zero_states += layer.rnn_zero_states
-          layer.add_summary_to_tg()
+          if self.tensorboard:
+            if type(layer) is Dense:
+              tf.summary.scalar('%s/fraction_of_zero_values'%layer.name, 
+                tf.nn.zero_fraction(layer.out_tensor)) 
+              layer.set_summary('histogram')
+              layer.add_summary_to_tg()
       self.session = tf.Session(config=self.configproto)
+      #self.session = tf_debug.LocalCLIDebugWrapperSession(self.session, dump_root = './tfdbg')
+      #self.session.add_tensor_filter('has_inf_or_nan', tf_debug.has_inf_or_nan)
       self.built = True
 
       # Ensure all training operators have been created.
@@ -678,7 +668,6 @@ class TensorGraph(Model):
         train_op = submodel.get_train_op()
 
       # Initialize variables.
-
       self.session.run(tf.global_variables_initializer())
       for layer in self.layers.values():
         if layer.variable_values is not None:
@@ -690,6 +679,7 @@ class TensorGraph(Model):
       if layer.tensorboard:
         self.tensorboard = True
     tf.summary.scalar("loss", self.loss.out_tensor)
+    tf.summary.scalar("avg_loss", self.loss.out_tensor/self.batch_size)
     for layer in self.layers.values():
       if layer.tensorboard:
         tf.summary.tensor_summary(layer.name, layer.out_tensor)
@@ -741,7 +731,7 @@ class TensorGraph(Model):
     self.loss = layer
 
   def add_output(self, layer):
-    """Add an output layer that can be computed by predict()"""
+    '''Add an output layer that can be computed by predict()'''
     self._add_layer(layer)
     self.outputs.append(layer)
 
@@ -749,12 +739,13 @@ class TensorGraph(Model):
     """Add a layer that computes the variance in an output.
 
     If a model supports uncertainty, it must call add_variance() once for every
-    output.  Each variance layer has the same shape as the corresponding output,
+    output. Each variance layer has the same shape as the corresponding output,
     and each element computes an estimate of the variance from aleatoric
     uncertainty in the corresponding element of the output.
 
     In addition, if a model supports uncertainty it MUST use dropout on every
-    layer.  Otherwise, the uncertainties it computes will be inaccurate.
+    layer. Otherwise, the uncertainties it computes will be inaccurate.
+
     """
     self._add_layer(layer)
     self.variances.append(layer)
@@ -881,36 +872,49 @@ class TensorGraph(Model):
                          feed_dict_generator,
                          metrics,
                          transformers=[],
+                         dataset=None,
                          labels=None,
                          outputs=None,
                          weights=[],
-                         per_task_metrics=False):
+                         per_task_metrics=False,
+                         no_r2=False,
+                         no_concordance_index=False,
+                         plot=False,
+                         is_training_set=False,
+                         tasks=None,
+                         model_name=None):
 
     if labels is None:
       raise ValueError
     n_tasks = len(self.outputs)
+    if tasks is not None:
+      assert len(tasks) == n_tasks
     n_classes = self.outputs[0].out_tensor.get_shape()[-1].value
     evaluator = GeneratorEvaluator(
         self,
         feed_dict_generator,
         transformers,
+        dataset=dataset,
         labels=labels,
         outputs=outputs,
         weights=weights,
         n_tasks=n_tasks,
-        n_classes=n_classes)
+        n_classes=n_classes,
+        is_training_set=is_training_set,
+        tasks=tasks,
+        model_name=model_name)
     if not per_task_metrics:
-      scores = evaluator.compute_model_performance(metrics)
+      scores = evaluator.compute_model_performance(metrics, 
+        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
       return scores
     else:
       scores, per_task_scores = evaluator.compute_model_performance(
-          metrics, per_task_metrics=per_task_metrics)
+        metrics, per_task_metrics=per_task_metrics, 
+        no_concordance_index=no_concordance_index, plot=plot, no_r2=no_r2)
       return scores, per_task_scores
 
   def get_layer_variables(self, layer):
     """Get the list of trainable variables in a layer of the graph."""
-    if tfe.in_eager_mode():
-      return layer.variables
     if not self.built:
       self.build()
     with self._get_tf("Graph").as_default():
@@ -923,14 +927,8 @@ class TensorGraph(Model):
     """Get the list of all trainable variables in the graph."""
     if not self.built:
       self.build()
-    if tfe.in_eager_mode():
-      variables = []
-      for layer in self.layers.values():
-        variables += layer.variables
-      return variables
-    else:
-      with self._get_tf("Graph").as_default():
-        return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
+    with self._get_tf("Graph").as_default():
+      return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
 
   def get_global_step(self):
     return self._get_tf("GlobalStep")
@@ -963,18 +961,20 @@ class TensorGraph(Model):
     elif obj == 'train_op':
       opt = self._get_tf('Optimizer')
       global_step = self._get_tf('GlobalStep')
-      try:
-        self.tensor_objects['train_op'] = opt.minimize(
-            self.loss.out_tensor, global_step=global_step)
-      except ValueError:
-        # The loss doesn't depend on any variables.
-        self.tensor_objects['train_op'] = 0
+      update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+      with tf.control_dependencies(update_ops):
+        try:
+          self.tensor_objects['train_op'] = opt.minimize(
+              self.loss.out_tensor, global_step=global_step)
+        except ValueError:
+          # The loss doesn't depend on any variables.
+          self.tensor_objects['train_op'] = 0
     elif obj == 'summary_op':
       self.tensor_objects['summary_op'] = tf.summary.merge_all(
           key=tf.GraphKeys.SUMMARIES)
     elif obj == 'GlobalStep':
       with self._get_tf("Graph").as_default():
-        self.tensor_objects['GlobalStep'] = create_variable(0, trainable=False)
+        self.tensor_objects['GlobalStep'] = tf.Variable(0, trainable=False)
     return self._get_tf(obj)
 
   def save_checkpoint(self, max_checkpoints_to_keep=5):
@@ -990,7 +990,7 @@ class TensorGraph(Model):
       the maximum number of checkpoints to keep.  Older checkpoints are discarded.
     """
     saver = tf.train.Saver(
-        self.get_variables(), max_to_keep=max_checkpoints_to_keep)
+      self.get_variables(), max_to_keep=max_checkpoints_to_keep)
     saver.save(self.session, self.save_file, global_step=self.global_step)
 
   def get_checkpoints(self):
@@ -1017,6 +1017,12 @@ class TensorGraph(Model):
     with self._get_tf("Graph").as_default():
       reader = NewCheckpointReader(checkpoint)
       var_names = set([x for x in reader.get_variable_to_shape_map()])
+      # var_map = {
+      #     x.op.name: x
+      #     for x in tf.global_variables()
+      #     if x.op.name in var_names
+      # }
+      # saver = tf.train.Saver(var_list=var_map)
       var_list = []
       for var in self.get_variables():
         name = var.name
@@ -1062,127 +1068,63 @@ class TensorGraph(Model):
     training: bool
       True during training, False during prediction
     """
-    if tfe.in_eager_mode():
-      for d in generator:
-        feed_dict = {}
-        for key, value in d.items():
-          if isinstance(key, Input):
-            # Add or remove dimensions of size 1 to match the shape of the layer.
-            try:
-              value_dims = len(value.shape)
-              layer_dims = len(key.shape)
-              if value_dims < layer_dims:
-                if all(i == 1 for i in key.shape[value_dims:]):
-                  value = tf.reshape(value,
-                                     list(value.shape) + [1] *
-                                     (layer_dims - value_dims))
-              if value_dims > layer_dims:
-                if all(i == 1 for i in value.shape[layer_dims:]):
-                  value = tf.reshape(value, value.shape[:layer_dims])
-            except:
-              pass
-            feed_dict[key] = tf.cast(value, key.dtype)
-          else:
-            feed_dict[key] = value
-        yield feed_dict
-    else:
-      train_value = 1.0 if training else 0.0
-      if self.queue_installed:
-        while True:
-          yield {self._training_placeholder: train_value}
-      for d in generator:
-        feed_dict = dict(d)
-        feed_dict[self._training_placeholder] = train_value
-        yield feed_dict
+    train_value = 1.0 if training else 0.0
+    if self.queue_installed:
+      while True:
+        yield {self._training_placeholder: train_value}
+    for d in generator:
+      feed_dict = dict(d)
+      feed_dict[self._training_placeholder] = train_value
+      yield feed_dict
 
-  def _run_graph(self, outputs, feed_dict, training):
-    """Run the calculations in the graph to compute some outputs.
-
-    In graph mode, this just calls session.run().  In eager mode, it executes
-    all required layers to compute the output.
-
-    Parameters
-    ----------
-    outputs: list of Layers
-      the output layers to compute
-    feed_dict: dict
-      maps input layers to values
-    training: bool
-      whether this is being executed in training mode
-    """
-    if not tfe.in_eager_mode():
-      return self.session.run(outputs, feed_dict)
-
-    def run_layers(layer, tensors):
-      if layer in tensors:
-        return tensors[layer]
-      inputs = [run_layers(input, tensors) for input in layer.in_layers]
-      tensor = layer.create_tensor(
-          in_layers=inputs, set_tensors=False, training=training)
-      tensors[layer] = tensor
-      return tensor
-
-    tensors = feed_dict.copy()
-    return [run_layers(o, tensors) for o in outputs]
-
-  def make_estimator(self,
-                     feature_columns,
-                     weight_column=None,
-                     metrics={},
-                     model_dir=None,
-                     config=None):
+  def make_estimator(self, feature_columns, weight_column=None, metrics={},
+    model_dir=None, config=None):
     """Construct a Tensorflow Estimator from this model.
 
     tf.estimator.Estimator is the standard Tensorflow API for representing models.
     This method provides interoperability between DeepChem and other Tensorflow
-    based tools by allowing any model to be used an Estimator.
+    based tools by allowing any model to be used in an Estimator.
 
     Once this method returns, the Estimator it created is independent of the model
-    it was created from.  They do not share tensors, variables, save files, or any
-    other resources.  The Estimator is a self contained object with its own methods
+    it was created from. They do not share tensors, variables, save files, or any
+    other resources. The Estimator is a self contained object with its own methods
     for training, evaluation, prediction, checkpointing, etc.
 
     Parameters
     ----------
     feature_columns: list of tf.feature_column objects
-      this describes the input features to the models.  There must be one entry
-      for each Feature layer in this model's features field.
+      this describes the input features to the models. There must be one entry for
+      each Feature layer in this model's features field.
     weight_column: tf.feature_column or None
       if this model includes a Weights layer, this describes the input weights.
       Otherwise, this should be None.
     metrics: map
-      metrics that should be computed in calls to evaluate().  For each entry,
+      metrics that should be computed in calls to evaluate(). For each entry,
       the key is the name to report for the metric, and the value is a function
       of the form f(labels, predictions, weights) that returns the tensors for
-      computing the metric.  Any of the functions in tf.metrics can be used, as
+      computing the metric. Any of the functions in tf.metrics can be used, as
       can other functions that satisfy the same interface.
     model_dir: str
-      the directory in which the Estimator should save files.  If None, this
+      the directory in which the Estimator should save files. If None, this
       defaults to the model's model_dir.
     config: RunConfig
-      configuration options for the Estimator
+      configuration options for the Estimator.
     """
-    # Check the inputs.
 
-    if tfe.in_eager_mode():
-      raise ValueError('make_estimator() is not supported in eager mode')
     if len(feature_columns) != len(self.features):
       raise ValueError(
-          'This model requires %d feature column(s)' % len(self.features))
+        'This model requries %d feature column(s)' % len(self.features))
     if len(self.labels) != 1:
       raise ValueError(
-          'Can only create an Estimator from a model with exactly one Label input'
+        'Can only create an Estimator from a model with exactly one Label input'
       )
     if len(self.task_weights) > 1:
       raise ValueError(
-          'Cannot create an Estimator from a model with multiple Weight inputs')
+        'Cannot create an Estimator from a model with multiple Weight inputs')
     if weight_column is None:
       if len(self.task_weights) > 0:
-        raise ValueError('This model requires a weight column')
-    else:
-      if len(self.task_weights) == 0:
         raise ValueError(
-            'Cannot specify weight_column for a model with no Weight inputs')
+          'Cannot specify weight_column for a model with no Weight inputs')
     if model_dir is None:
       model_dir = self.model_dir
 
@@ -1192,27 +1134,24 @@ class TensorGraph(Model):
       if layer in tensors:
         return tensors[layer]
       inputs = [
-          create_tensors(in_layer, tensors, training)
-          for in_layer in layer.in_layers
+        create_tensors(in_layer, tensors, training)
+        for in_layer in layer.in_layers
       ]
       tensor = layer.create_tensor(
-          in_layers=inputs, set_tensors=False, training=training)
+        in_layers=inputs, set_tensors=False, training=training)
       tensors[layer] = tensor
       layer.add_summary_to_tg(tensor)
       return tensor
 
     # Define the model function.
-
     def model_fn(features, labels, mode):
       # Define the inputs.
-
       tensors = self.create_estimator_inputs(feature_columns, weight_column,
-                                             features, labels, mode)
+        features, labels, mode)
       for layer, tensor in tensors.items():
         layer.add_summary_to_tg(tensor)
 
       # Create the correct outputs, based on the mode.
-
       if mode == tf.estimator.ModeKeys.PREDICT:
         predictions = {}
         for i, output in enumerate(self.outputs):
@@ -1227,10 +1166,8 @@ class TensorGraph(Model):
           weights = tensors[self.task_weights[0]]
         eval_metric_ops = {}
         for name, function in metrics.items():
-          eval_metric_ops[name] = function(tensors[self.labels[0]], predictions,
-                                           weights)
-        return tf.estimator.EstimatorSpec(
-            mode, loss=loss, eval_metric_ops=eval_metric_ops)
+          eval_metric_ops[name] = function(tensors[self.labels[0]], predictions, weights)
+        return tf.estimator.EstimatorSpec(mode, loss=loss, eval_metric_ops=eval_metric_ops)
       if mode == tf.estimator.ModeKeys.TRAIN:
         loss = create_tensors(self.loss, tensors, 1)
         global_step = tf.train.get_global_step()
@@ -1239,38 +1176,35 @@ class TensorGraph(Model):
         return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
       raise ValueError('Unknown mode')
 
-    # Create the Estimator.
-
     return tf.estimator.Estimator(
-        model_fn=model_fn, model_dir=model_dir, config=config)
+      model_fn=model_fn, model_dir=model_dir, config=config)
 
   def create_estimator_inputs(self, feature_columns, weight_column, features,
-                              labels, mode):
+    labels, mode):
     """This is called by make_estimator() to create tensors for the inputs.
 
-    feature_columns and weight_column are the arguments passed to
-    make_estimator().  features, labels, and mode are the arguments passed to
-    the estimator's model function.  This method creates and returns a dict with
-    one entry for every Feature, Label, or Weights layer in the graph.  The keys
-    are the layers, and the values are the tensors that correspond to them.
+    feature_columns and weight_column are the arguments passed to make_estimator().
+    Features, labels and mode are the arguments passed to the estimator's
+    model function. THis method creates and returns a dict with one entry for
+    every Feature, Label, or Weight layer in the graph. The keys are the layers,
+    and the values are the tensors that correspond to them.
 
     Any subclass that overrides default_generator() must also override this
     method.
     """
     if self.__class__.default_generator != TensorGraph.default_generator:
       raise ValueError(
-          "Class overrides default_generator() but not create_estimator_inputs()"
+        "Class overrides default_generator() but not create_estimator_inputs()"
       )
     tensors = {}
     for layer, column in zip(self.features, feature_columns):
       tensors[layer] = tf.feature_column.input_layer(features, [column])
     if weight_column is not None:
       tensors[self.task_weights[0]] = tf.feature_column.input_layer(
-          features, [weight_column])
+        features, [weight_column])
     if labels is not None:
       tensors[self.labels[0]] = tf.cast(labels, self.labels[0].dtype)
     return tensors
-
 
 def _enqueue_batch(tg, generator, graph, sess, n_enqueued, final_sample):
   """
@@ -1301,7 +1235,7 @@ def _enqueue_batch(tg, generator, graph, sess, n_enqueued, final_sample):
             if value_dims < layer_dims:
               if all(i == 1 for i in layer.shape[value_dims:]):
                 value = value.reshape(
-                    list(value.shape) + [1] * (layer_dims - value_dims))
+                  list(value.shape) + [1] * (layer_dims - value_dims))
             if value_dims > layer_dims:
               if all(i == 1 for i in value.shape[layer_dims:]):
                 value = value.reshape(value.shape[:layer_dims])
@@ -1369,6 +1303,10 @@ class Submodel(object):
         loss = self.graph.loss
       else:
         loss = self.loss
+      # if self.optimizer is None:
+      #   optimizer = self.graph.optimizer
+      # else:
+      #   optimizer = self.optimizer
       tf_opt = self.create_optimizer()
       global_step = self.graph._get_tf('GlobalStep')
       self._train_op = tf_opt.minimize(loss.out_tensor, global_step, variables)
@@ -1380,6 +1318,5 @@ class Submodel(object):
       optimizer = self.graph.optimizer
     else:
       optimizer = self.optimizer
-    # Should we keep a separate global step count for each submodel?
     global_step = self.graph._get_tf('GlobalStep')
     return optimizer._create_optimizer(global_step)
