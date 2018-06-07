@@ -8,15 +8,15 @@ from __future__ import unicode_literals
 #__version__ = '1.3.1'
 
 import dcCustom.data
-#import deepchem.feat
-#import deepchem.hyper
+import dcCustom.feat
+import dcCustom.hyper
 #import deepchem.metalearning
-#import deepchem.metrics
+import dcCustom.metrics
 import dcCustom.models
-#import deepchem.nn
-#import deepchem.splits
+#import dcCustom.nn
+import dcCustom.splits
 #import deepchem.trans
-#import deepchem.utils
+import dcCustom.utils
 #import deepchem.dock
-#import deepchem.molnet
+import dcCustom.molnet
 #import deepchem.rl
