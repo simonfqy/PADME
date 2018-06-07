@@ -1,13 +1,14 @@
 """
 Activations for models.
 """
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
 import six
 import tensorflow as tf
-from deepchem.models.tensorgraph import model_ops
-from deepchem.models.tensorgraph.model_ops import get_ndim
+from dcCustom.nn import model_ops
+from dcCustom.nn.model_ops import get_ndim
 
 
 def get_from_module(identifier,
