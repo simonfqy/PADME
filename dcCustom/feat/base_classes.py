@@ -2,14 +2,12 @@
 Feature calculations.
 """
 import types
-import pdb
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import rdGeometry, rdMolTransforms
 from deepchem.utils.save import log
-from dcCustom.feat.proteins import Protein
 
-__author__ = "Steven Kearnes, modified by Qingyuan Feng"
+__author__ = "Steven Kearnes"
 __copyright__ = "Copyright 2014, Stanford University"
 __license__ = "BSD 3-clause"
 
@@ -61,7 +59,7 @@ class Featurizer(object):
   for a single molecule.
   """
 
-  def featurize(self, mols, smiles=None, verbose=True, log_every_n=1000):
+  def featurize(self, mols, verbose=True, log_every_n=1000):
     """
     Calculate features for molecules.
 
@@ -74,10 +72,10 @@ class Featurizer(object):
     features = []
     for i, mol in enumerate(mols):
       if mol is not None:
-        features.append(self._featurize(mol, smiles=smiles))
+        features.append(self._featurize(mol))
       else:
         features.append(np.array([]))
-    
+
     features = np.asarray(features)
     return features
 
@@ -102,32 +100,6 @@ class Featurizer(object):
         RDKit Mol objects.
     """
     return self.featurize(mols)
-
-# class ProtFeaturizer(object):
-  # """Featurizer for proteins. Actually it just selects the specified descriptor 
-  # from the file."""
-  # def __init__(self, name):
-    # self.name = name
-
-  # def featurize(self, mols, verbose=True, log_every_n=1000):
-    # """
-    # Calculate features for molecules.
-
-    # Parameters
-    # ----------
-    # mols : iterable
-        # RDKit Mol objects.
-    # """
-    # mols = list(mols)
-    # features = []
-    # for i, mol in enumerate(mols):
-      # if mol is not None:
-        # features.append(self._featurize(mol))
-      # else:
-        # features.append(np.array([]))
-
-    # features = np.asarray(features)
-    # return features
 
 
 class UserDefinedFeaturizer(Featurizer):
