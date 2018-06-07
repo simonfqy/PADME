@@ -65,7 +65,7 @@ def model_regression(
     num_dense_layer = hyper_parameters['num_dense_layer']
     dense_cmb_layer_size = hyper_parameters['dense_cmb_layer_size']
     
-    model = dcCustom.models.GraphConvTensorGraph(
+    model = dcCustom.models.GraphConvModel(
         len(tasks),
         graph_conv_layers=[n_filters] * 2,
         dense_layer_size=n_fully_connected_nodes,
@@ -92,7 +92,7 @@ def model_regression(
     num_dense_layer = hyper_parameters['num_dense_layer']
     dense_cmb_layer_size = hyper_parameters['dense_cmb_layer_size']
 
-    model = dcCustom.models.MPNNTensorGraph(
+    model = dcCustom.models.MPNNModel(
         len(tasks),
         n_atom_feat=n_features[0],
         n_pair_feat=n_features[1],
@@ -164,7 +164,7 @@ def model_regression(
     # n_hidden = 202
     # dropout_prob = 0.153
 
-    model = dcCustom.models.WeaveTensorGraph(
+    model = dcCustom.models.WeaveModel(
       len(tasks),
       n_atom_feat=n_features,
       #n_pair_feat=n_pair_feat,
@@ -286,7 +286,7 @@ def model_classification(
     num_dense_layer = hyper_parameters['num_dense_layer']
     dense_cmb_layer_size = hyper_parameters['dense_cmb_layer_size']
     
-    model = dcCustom.models.GraphConvTensorGraph(
+    model = dcCustom.models.GraphConvModel(
         len(tasks),
         graph_conv_layers=[n_filters] * 2,
         dense_layer_size=n_fully_connected_nodes,
@@ -313,7 +313,7 @@ def model_classification(
     num_dense_layer = hyper_parameters['num_dense_layer']
     dense_cmb_layer_size = hyper_parameters['dense_cmb_layer_size']
 
-    model = dcCustom.models.MPNNTensorGraph(
+    model = dcCustom.models.MPNNModel(
         len(tasks),
         n_atom_feat=n_features[0],
         n_pair_feat=n_features[1],
@@ -385,7 +385,7 @@ def model_classification(
     # n_hidden = 154
     # dropout_prob = 0.1
 
-    model = dcCustom.models.WeaveTensorGraph(
+    model = dcCustom.models.WeaveModel(
       len(tasks),
       n_atom_feat=n_features,
       #n_pair_feat=n_pair_feat,      
