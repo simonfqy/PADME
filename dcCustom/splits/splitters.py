@@ -113,8 +113,7 @@ class Splitter(object):
       # Note starts as 1/k since fold starts at 0. Ends at 1 since fold goes up
       # to k-1.
       frac_fold = 1. / (k - fold)
-      train_dir, cv_dir = directories[2 * fold], directories[2 * fold + 1]
-      #pdb.set_trace()
+      train_dir, cv_dir = directories[2 * fold], directories[2 * fold + 1]      
       fold_inds, rem_inds, _ = self.split(
           rem_dataset,
           frac_train=frac_fold,
