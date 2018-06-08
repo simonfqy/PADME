@@ -1,6 +1,7 @@
 """
 Contains wrapper class for datasets.
 """
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 import json
@@ -17,9 +18,10 @@ import tempfile
 import time
 import shutil
 import json
+import pdb
 from multiprocessing.dummy import Pool
 
-__author__ = "Bharath Ramsundar"
+__author__ = "Bharath Ramsundar, modified by Qingyuan Feng"
 __copyright__ = "Copyright 2016, Stanford University"
 __license__ = "MIT"
 
@@ -199,9 +201,9 @@ class Dataset(object):
 
     >>> dataset = NumpyDataset(np.ones((2,2)))
     >>> for x, y, w, id in dataset.itersamples():
-    ...   print(x.tolist(), y.tolist(), w.tolist(), id)
-    [1.0, 1.0] [0.0] [0.0] 0
-    [1.0, 1.0] [0.0] [0.0] 1
+    ...   print(x, y, w, id)
+    [1. 1.] [0.] [0.] 0
+    [1. 1.] [0.] [0.] 1
     """
     raise NotImplementedError()
 
@@ -259,57 +261,19 @@ class Dataset(object):
     else:
       return None
 
-  def make_iterator(self,
-                    batch_size=100,
-                    epochs=1,
-                    deterministic=False,
-                    pad_batches=False):
-    """Create a tf.data.Iterator that iterates over the data in this Dataset.
-
-    The iterator's get_next() method returns a tuple of three tensors (X, y, w)
-    which can be used to retrieve the features, labels, and weights respectively.
-
-    Parameters
-    ----------
-    batch_size: int
-      the number of samples to include in each batch
-    epochs: int
-      the number of times to iterate over the Dataset
-    deterministic: bool
-      if True, the data is produced in order.  If False, a different random
-      permutation of the data is used for each epoch.
-    pad_batches: bool
-      if True, batches are padded as necessary to make the size of each batch
-      exactly equal batch_size.
-    """
-    # Retrieve the first sample so we can determine the dtypes.
-
-    import tensorflow as tf
-    X, y, w, ids = next(self.itersamples())
-    dtypes = (tf.as_dtype(X.dtype), tf.as_dtype(y.dtype), tf.as_dtype(w.dtype))
-    shapes = (tf.TensorShape([None] + list(X.shape)),
-              tf.TensorShape([None] + list(y.shape)),
-              tf.TensorShape([None] + list(w.shape)))
-
-    # Create a Tensorflow Dataset and have it create an Iterator.
-
-    def gen_data():
-      for epoch in range(epochs):
-        for X, y, w, ids in self.iterbatches(batch_size, epoch, deterministic,
-                                             pad_batches):
-          yield (X, y, w)
-
-    dataset = tf.data.Dataset.from_generator(gen_data, dtypes, shapes)
-    return dataset.make_one_shot_iterator()
-
 
 class NumpyDataset(Dataset):
   """A Dataset defined by in-memory numpy arrays."""
 
   def __init__(self, X, y=None, w=None, ids=None, n_tasks=1):
     n_samples = len(X)
+    # The -1 indicates that y will be reshaped to have length -1
     if n_samples > 0:
-      if y is None:
+      if y is not None:
+        y = np.reshape(y, (n_samples, -1))
+        if w is not None:
+          w = np.reshape(w, (n_samples, -1))
+      else:
         # Set labels to be zero, with zero weights
         y = np.zeros((n_samples, n_tasks))
         w = np.zeros_like(y)
@@ -317,12 +281,6 @@ class NumpyDataset(Dataset):
       ids = np.arange(n_samples)
     if w is None:
       w = np.ones_like(y)
-    if not isinstance(X, np.ndarray):
-      X = np.array(X)
-    if not isinstance(y, np.ndarray):
-      y = np.array(y)
-    if not isinstance(w, np.ndarray):
-      w = np.array(w)
     self._X = X
     self._y = y
     self._w = w
@@ -409,9 +367,9 @@ class NumpyDataset(Dataset):
 
     >>> dataset = NumpyDataset(np.ones((2,2)))
     >>> for x, y, w, id in dataset.itersamples():
-    ...   print(x.tolist(), y.tolist(), w.tolist(), id)
-    [1.0, 1.0] [0.0] [0.0] 0
-    [1.0, 1.0] [0.0] [0.0] 1
+    ...   print(x, y, w, id)
+    [1. 1.] [0.] [0.] 0
+    [1. 1.] [0.] [0.] 1
     """
     n_samples = self._X.shape[0]
     return ((self._X[i], self._y[i], self._w[i], self._ids[i])
@@ -498,12 +456,12 @@ class NumpyDataset(Dataset):
     """
     Parameters
     ----------
-    datasets: list of deepchem.data.NumpyDataset
+    datasets: list of dcCustom.data.NumpyDataset
       list of datasets to merge
 
     Returns
     -------
-    Single deepchem.data.NumpyDataset with data concatenated over axis 0
+    Single dcCustom.data.NumpyDataset with data concatenated over axis 0
     """
     X, y, w, ids = datasets[0].X, datasets[0].y, datasets[0].w, datasets[0].ids
     for dataset in datasets[1:]:
@@ -693,6 +651,7 @@ class DiskDataset(Dataset):
     sample_X = load_from_disk(
         os.path.join(self.data_dir,
                      next(self.metadata_df.iterrows())[1]['X']))
+    
     return np.shape(sample_X)[1:]
 
   def get_shard_size(self):
@@ -730,6 +689,7 @@ class DiskDataset(Dataset):
     def iterate(dataset):
       for _, row in dataset.metadata_df.iterrows():
         X = np.array(load_from_disk(os.path.join(dataset.data_dir, row['X'])))
+        #pdb.set_trace()
         ids = np.array(
             load_from_disk(os.path.join(dataset.data_dir, row['ids'])),
             dtype=object)
@@ -874,6 +834,7 @@ class DiskDataset(Dataset):
             if pad_batches:
               (X_b, y_b, w_b, ids_b) = pad_batch(shard_batch_size, X_b, y_b,
                                                  w_b, ids_b)
+            #pdb.set_trace()
 
             yield X_b, y_b, w_b, ids_b
             cur_global_batch += 1
@@ -889,9 +850,9 @@ class DiskDataset(Dataset):
 
     >>> dataset = DiskDataset.from_numpy(np.ones((2,2)), np.ones((2,1)), verbose=False)
     >>> for x, y, w, id in dataset.itersamples():
-    ...   print(x.tolist(), y.tolist(), w.tolist(), id)
-    [1.0, 1.0] [1.0] [1.0] 0
-    [1.0, 1.0] [1.0] [1.0] 1
+    ...   print(x, y, w, id)
+    [1. 1.] [1.] [1.] 0
+    [1. 1.] [1.] [1.] 1
     """
 
     def iterate(dataset):
@@ -1282,7 +1243,7 @@ class DiskDataset(Dataset):
   def get_shape(self):
     """Finds shape of dataset."""
     n_tasks = len(self.get_task_names())
-    X_shape = np.array((0,) + (0,) * len(self.get_data_shape()))
+    X_shape = np.array((0,) + (0,) * len(self.get_data_shape()))    
     ids_shape = np.array((0,))
     if n_tasks > 0:
       y_shape = np.array((0,) + (0,))
@@ -1304,6 +1265,7 @@ class DiskDataset(Dataset):
           y_shape[0] += np.array(y.shape)[0]
           w_shape[0] += np.array(w.shape)[0]
         ids_shape[0] += np.array(ids.shape)[0]
+
     return tuple(X_shape), tuple(y_shape), tuple(w_shape), tuple(ids_shape)
 
   def get_label_means(self):

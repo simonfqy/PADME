@@ -1,6 +1,7 @@
 """
 Process an input dataset into a format suitable for machine learning.
 """
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 import os
@@ -15,12 +16,14 @@ from rdkit.Chem import rdmolops
 from rdkit import Chem
 import time
 import sys
+import pdb
 from deepchem.utils.save import log
 from deepchem.utils.save import load_csv_files
-from deepchem.utils.save import load_sdf_files
-from deepchem.utils.save import encode_fasta_sequence
+#from deepchem.utils.save import load_sdf_files
+#from deepchem.utils.save import encode_fasta_sequence
 from deepchem.feat import UserDefinedFeaturizer
-from deepchem.data import DiskDataset
+from dcCustom.data import DiskDataset
+from dcCustom.feat import Protein
 
 
 def convert_df_to_numpy(df, tasks, verbose=False):
@@ -51,8 +54,21 @@ def convert_df_to_numpy(df, tasks, verbose=False):
         w[ind, task] = 0.
 
   return y.astype(float), w.astype(float)
-
-
+  
+def featurize_protein(df, field, source_field, prot_seq_dict, log_every_N=500, verbose=True):
+  '''This is supposed to match the format of functions for featurizing molecules.
+  It is not really featurizing, but only constructs the protein objects from their names.'''
+  elems = df[field].tolist()
+  sources = df[source_field].tolist()
+  proteins = []
+  for ind, prot in enumerate(elems):
+    source = sources[ind]
+    pair = (source, prot)
+    sequence = prot_seq_dict[pair]
+    proteins.append([Protein(prot, source = source, sequence = sequence)])  
+  #return np.squeeze(np.array(proteins), axis=1), valid_inds
+  return np.array(proteins)
+ 
 def featurize_smiles_df(df, featurizer, field, log_every_N=1000, verbose=True):
   """Featurize individual compounds in dataframe.
 
@@ -64,7 +80,7 @@ def featurize_smiles_df(df, featurizer, field, log_every_N=1000, verbose=True):
 
   features = []
   for ind, elem in enumerate(sample_elems):
-    mol = Chem.MolFromSmiles(elem)
+    mol = Chem.MolFromSmiles(elem)    
     # TODO (ytz) this is a bandage solution to reorder the atoms so
     # that they're always in the same canonical order. Presumably this
     # should be correctly implemented in the future for graph mols.
@@ -73,11 +89,14 @@ def featurize_smiles_df(df, featurizer, field, log_every_N=1000, verbose=True):
       mol = rdmolops.RenumberAtoms(mol, new_order)
     if ind % log_every_N == 0:
       log("Featurizing sample %d" % ind, verbose)
-    features.append(featurizer.featurize([mol]))
+    features.append(featurizer.featurize([mol], smiles=elem))
+  
   valid_inds = np.array(
       [1 if elt.size > 0 else 0 for elt in features], dtype=bool)
   features = [elt for (is_valid, elt) in zip(valid_inds, features) if is_valid]
-  return np.squeeze(np.array(features), axis=1), valid_inds
+  
+  #return np.squeeze(np.array(features), axis=1), valid_inds
+  return np.array(features), valid_inds
 
 
 def featurize_smiles_np(arr, featurizer, log_every_N=1000, verbose=True):
@@ -166,7 +185,10 @@ class DataLoader(object):
                id_field=None,
                mol_field=None,
                featurizer=None,
+               protein_field=None,
+               source_field=None,               
                verbose=True,
+               prot_seq_dict=None,
                log_every_n=1000):
     """Extracts data from input as Pandas data frame"""
     if not isinstance(tasks, list):
@@ -179,6 +201,9 @@ class DataLoader(object):
     else:
       self.id_field = id_field
     self.mol_field = mol_field
+    self.protein_field = protein_field
+    self.source_field = source_field
+    self.prot_seq_dict = prot_seq_dict
     self.user_specified_features = None
     if isinstance(featurizer, UserDefinedFeaturizer):
       self.user_specified_features = featurizer.feature_fields
@@ -253,75 +278,12 @@ class CSVLoader(DataLoader):
 
   def featurize_shard(self, shard):
     """Featurizes a shard of an input dataframe."""
-    return featurize_smiles_df(shard, self.featurizer, field=self.smiles_field)
+    mol_features, valid_inds = featurize_smiles_df(shard, self.featurizer, field=self.smiles_field)
+    if len(mol_features.shape) > 2:
+      mol_features = np.squeeze(mol_features)
+    proteins = featurize_protein(shard, field=self.protein_field, source_field=self.source_field,
+      prot_seq_dict=self.prot_seq_dict)
+    # Note: for ECFP with 1024 entries, mol_features is a (8192, 1024) sized array.    
+    return np.concatenate((mol_features, proteins), axis=1), valid_inds
 
 
-class UserCSVLoader(DataLoader):
-  """
-  Handles loading of CSV files with user-defined featurizers.
-  """
-
-  def get_shards(self, input_files, shard_size):
-    """Defines a generator which returns data for each shard"""
-    return load_csv_files(input_files, shard_size)
-
-  def featurize_shard(self, shard):
-    """Featurizes a shard of an input dataframe."""
-    assert isinstance(self.featurizer, UserDefinedFeaturizer)
-    X = get_user_specified_features(shard, self.featurizer)
-    return (X, np.ones(len(X), dtype=bool))
-
-
-class SDFLoader(DataLoader):
-  """
-  Handles loading of SDF files.
-  """
-
-  def __init__(self, tasks, clean_mols=False, **kwargs):
-    super(SDFLoader, self).__init__(tasks, **kwargs)
-    self.clean_mols = clean_mols
-    self.smiles_field = "smiles"
-    self.mol_field = "mol"
-    self.id_field = "smiles"
-
-  def get_shards(self, input_files, shard_size):
-    """Defines a generator which returns data for each shard"""
-    return load_sdf_files(input_files, self.clean_mols)
-
-  def featurize_shard(self, shard):
-    """Featurizes a shard of an input dataframe."""
-    log("Currently featurizing feature_type: %s" %
-        self.featurizer.__class__.__name__, self.verbose)
-    return featurize_mol_df(shard, self.featurizer, field=self.mol_field)
-
-
-class FASTALoader(DataLoader):
-  """
-  Handles loading of FASTA files.
-  """
-
-  def __init__(self, verbose=True):
-    """Initialize loader."""
-    self.verbose = verbose
-
-  def featurize(self, input_files, data_dir=None):
-    """Featurizes fasta files.
-
-    Parameters
-    ----------
-    input_files: list
-      List of fasta files.
-    data_dir: str
-      (Optional) Name of directory where featurized data is stored.
-    """
-    if not isinstance(input_files, list):
-      input_files = [input_files]
-
-    def shard_generator():
-      for input_file in input_files:
-        X = encode_fasta_sequence(input_file)
-        ids = np.ones(len(X))
-        # (X, y, w, ids)
-        yield X, None, None, ids
-
-    return DiskDataset.create_dataset(shard_generator(), data_dir)
