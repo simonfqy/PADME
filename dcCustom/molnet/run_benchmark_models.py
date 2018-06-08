@@ -126,7 +126,7 @@ def model_regression(
     num_dense_layer = hyper_parameters['num_dense_layer']
     dense_cmb_layer_size = hyper_parameters['dense_cmb_layer_size']
 
-    model = dcCustom.models.MultiTaskRegressor(
+    model = dcCustom.models.MultitaskRegressor(
         len(tasks),
         n_features,
         layer_sizes=layer_sizes,
@@ -347,8 +347,8 @@ def model_classification(
     num_dense_layer = hyper_parameters['num_dense_layer']
     dense_cmb_layer_size = hyper_parameters['dense_cmb_layer_size']
 
-    # Building tensorflow MultiTaskDNN model
-    model = dcCustom.models.MultiTaskClassifier(
+    # Building tensorflow MultitaskDNN model
+    model = dcCustom.models.MultitaskClassifier(
         len(tasks),
         n_features,
         layer_sizes=layer_sizes,
