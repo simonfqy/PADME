@@ -1,6 +1,7 @@
 """
 Data Structures used to represented molecules for convolutions.
 """
+from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
@@ -44,19 +45,19 @@ def cumulative_sum(l, offset=0):
 
 
 class ConvMol(object):
-  """Holds information about a molecules.
+  """Holds information about a molecule.
 
   Resorts order of atoms internally to be in order of increasing degree. Note
   that only heavy atoms (hydrogens excluded) are considered here.
   """
 
-  def __init__(self, atom_features, adj_list, max_deg=10, min_deg=0):
+  def __init__(self, atom_features, adj_list, smiles=None, max_deg=10, min_deg=0):
     """
     Parameters
     ----------
     atom_features: np.ndarray
       Has shape (n_atoms, n_feat)
-    canon_ad_list: list
+    canon_adj_list: list
       List of length n_atoms, with neighor indices of each atom.
     max_deg: int, optional
       Maximum degree of any atom.
@@ -70,6 +71,7 @@ class ConvMol(object):
     self.canon_adj_list = adj_list
     self.deg_adj_lists = []
     self.deg_slice = []
+    self.smiles = smiles
     self.max_deg = max_deg
     self.min_deg = min_deg
 
@@ -97,6 +99,23 @@ class ConvMol(object):
     # Convert to numpy array
     self.deg_block_indices = np.array(deg_block_indices)
 
+  # The following two functions are for constructing dictionaries in cold-splits.
+  def __eq__(self, other):
+    if isinstance(self, other.__class__):
+      assert self.smiles is not None
+      #return (np.array_equal(self.atom_features, other.atom_features) 
+       # and self.canon_adj_list == other.canon_adj_list)
+      return self.smiles == other.smiles
+    return False
+    
+  def __hash__(self):
+    #return hash((self.atom_features.tostring(), np.array(self.canon_adj_list).tostring()))
+    assert self.smiles is not None
+    return hash(self.smiles)
+
+  def get_smiles(self):
+    return self.smiles
+
   def get_atoms_with_deg(self, deg):
     """Retrieves atom_features with the specific degree"""
     start_ind = self.deg_slice[deg - self.min_deg, 0]
@@ -122,7 +141,7 @@ class ConvMol(object):
 
     num_atoms = self.get_num_atoms()
 
-    # Reorder old atom_features
+    # Reorder old atom_features 
     self.atom_features = self.atom_features[new_ind, :]
 
     # Reorder old deg lists
@@ -136,8 +155,7 @@ class ConvMol(object):
 
     # Reorder adjacency lists
     self.canon_adj_list = [self.canon_adj_list[i] for i in new_ind]
-    self.canon_adj_list = [[old_to_new[k]
-                            for k in self.canon_adj_list[i]]
+    self.canon_adj_list = [[old_to_new[k] for k in self.canon_adj_list[i]]
                            for i in range(len(new_ind))]
 
     # Get numpy version of degree list for indexing
@@ -254,7 +272,7 @@ class ConvMol(object):
   @staticmethod
   def agglomerate_mols(mols, max_deg=10, min_deg=0):
     """Concatenates list of ConvMol's into one mol object that can be used to feed 
-    into tensorflow placeholders. The indexing of the molecules are preseved during the
+    into tensorflow placeholders. The indexing of the molecules are preserved during the
     combination, but the indexing of the atoms are greatly changed.
     
     Parameters 
@@ -266,20 +284,20 @@ class ConvMol(object):
 
     atoms_per_mol = [mol.get_num_atoms() for mol in mols]
 
+    smiles_per_mol = [mol.get_smiles() for mol in mols]
+
     # Get atoms by degree
     atoms_by_deg = [
         mol.get_atoms_with_deg(deg)
-        for deg in range(min_deg, max_deg + 1)
-        for mol in mols
+        for deg in range(min_deg, max_deg + 1) for mol in mols
     ]
 
-    # stack the atoms
+    # stack the atoms 
     all_atoms = np.vstack(atoms_by_deg)
 
     # Sort all atoms by degree.
     # Get the size of each atom list separated by molecule id, then by degree
-    mol_deg_sz = [[mol.get_num_atoms_with_deg(deg)
-                   for mol in mols]
+    mol_deg_sz = [[mol.get_num_atoms_with_deg(deg) for mol in mols]
                   for deg in range(min_deg, max_deg + 1)]
 
     # Get the final size of each degree block
@@ -292,7 +310,7 @@ class ConvMol(object):
     # first column telling the start indices of each degree block and the
     # second colum telling the size of each degree block
 
-    # Input for tensorflow
+    # Input for tensorflow 
     deg_slice = np.array(list(zip(deg_start, deg_sizes)))
 
     # Determines the membership (atom i belongs to membership[i] molecule)
@@ -304,7 +322,7 @@ class ConvMol(object):
 
     # Get the index at which each deg starts, resetting after each degree
     # (deg x num_mols) matrix describing the start indices when you count up the atoms
-    # in the final representation, stopping at each molecule,
+    # in the final representation, stopping at each molecule, 
     # resetting every time the degree changes
     start_by_deg = np.vstack([cumulative_sum_minus_last(l) for l in mol_deg_sz])
 
@@ -330,8 +348,8 @@ class ConvMol(object):
       # degree block corresponding to degree id deg_id (second term), and then
       # calculate which index this degree block ends up in the final
       # representation (first term). The sum of the two is the final indexn
-      return start_per_mol[deg_id,
-                           mol_id] + deg_block_indices[mol_id][mol_atom_id]
+      return start_per_mol[deg_id, mol_id] + deg_block_indices[mol_id][
+          mol_atom_id]
 
     # Initialize the new degree separated adjacency lists
     deg_adj_lists = [
@@ -351,7 +369,7 @@ class ConvMol(object):
         nbr_list = mols[mol_id].deg_adj_lists[deg_id]
 
         # Correct all atom indices to the final indices, and then save the
-        # results into the new adjacency lists
+        # results into the new adjacency lists 
         for i in range(nbr_list.shape[0]):
           for j in range(nbr_list.shape[1]):
             deg_adj_lists[deg_id][row, j] = to_final_id(nbr_list[i, j], mol_id)
@@ -361,7 +379,7 @@ class ConvMol(object):
 
     # Get the final aggregated molecule
     concat_mol = MultiConvMol(all_atoms, deg_adj_lists, deg_slice, membership,
-                              num_mols)
+                              num_mols, smiles_list = smiles_per_mol)
     return concat_mol
 
 
@@ -370,7 +388,7 @@ class MultiConvMol(object):
      into tensorflow. Generated using the agglomerate_mols function
   """
 
-  def __init__(self, nodes, deg_adj_lists, deg_slice, membership, num_mols):
+  def __init__(self, nodes, deg_adj_lists, deg_slice, membership, num_mols, smiles_list=None):
 
     self.nodes = nodes
     self.deg_adj_lists = deg_adj_lists
@@ -378,6 +396,21 @@ class MultiConvMol(object):
     self.membership = membership
     self.num_mols = num_mols
     self.num_atoms = nodes.shape[0]
+    self.smiles_list = smiles_list
+
+  # The following two functions are for constructing dictionaries in cold-splits.
+  def __eq__(self, other):
+    if isinstance(self, other.__class__):
+      assert self.smiles_list is not None
+      #return (np.array_equal(self.nodes, other.nodes) 
+      #  and self.deg_adj_lists == other.deg_adj_lists)
+      return self.smiles_list == other.smiles_list
+    return False
+    
+  def __hash__(self):
+    assert self.smiles_list is not None
+    return hash(str(self.smiles_list))
+    #return hash((self.nodes.tostring(), np.array(self.deg_adj_lists).tostring()))
 
   def get_deg_adjacency_lists(self):
     return self.deg_adj_lists
@@ -397,12 +430,26 @@ class WeaveMol(object):
   Molecule struct used in weave models
   """
 
-  def __init__(self, nodes, pairs):
+  def __init__(self, nodes, pairs, smiles=None):
 
     self.nodes = nodes
     self.pairs = pairs
+    self.smiles = smiles
     self.num_atoms = self.nodes.shape[0]
     self.n_features = self.nodes.shape[1]
+  
+  # The following two functions are for constructing dictionaries in cold-splits.
+  def __eq__(self, other):
+    if isinstance(self, other.__class__):
+      #return (np.array_equal(self.nodes, other.nodes) and np.array_equal(self.pairs, other.pairs))
+      assert self.smiles is not None
+      return self.smiles == other.smiles
+    return False
+    
+  def __hash__(self):
+    assert self.smiles is not None
+    #return hash((self.nodes.tostring(), self.pairs.tostring()))
+    return hash(self.smiles)
 
   def get_pair_features(self):
     return self.pairs
