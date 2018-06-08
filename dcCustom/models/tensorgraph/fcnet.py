@@ -320,13 +320,17 @@ class MultitaskRegressor(TensorGraph):
                         predict=False,
                         deterministic=True,
                         pad_batches=True):
+    if len(self.labels) > 1:
+      raise ValueError("More than one Label, must use generator")
+    if len(self.task_weights) > 1:
+      raise ValueError("More than one Weights, must use generator")
     for epoch in range(epochs):
       for (X_b, y_b, w_b, ids_b) in dataset.iterbatches(
           batch_size=self.batch_size,
           deterministic=deterministic,
           pad_batches=pad_batches):
         feed_dict = dict()
-        if y_b is not None and not predict:
+        if len(self.labels) == 1 and y_b is not None and not predict:
           feed_dict[self.labels[0]] = y_b.reshape(-1, self.n_tasks, 1)
         if X_b is not None:
           mol_list = X_b[:, 0]
@@ -340,8 +344,8 @@ class MultitaskRegressor(TensorGraph):
           prot_desc_reshaped = prot_desc.reshape((prot_desc.shape[0], prot_desc.shape[2]))
           #feed_dict[self.features[1]] = np.squeeze(np.array(prot_desc))
           feed_dict[self.features[1]] = prot_desc_reshaped
-        if w_b is not None and not predict:
-          feed_dict[self.task_weights[0]] = w_b
+        if len(self.task_weights) == 1 and w_b is not None and not predict:
+          feed_dict[self.task_weights[0]] = w_b.reshape(-1, self.n_tasks, 1)
         yield feed_dict
 
 

@@ -8,8 +8,8 @@ from __future__ import unicode_literals
 from __future__ import absolute_import
 
 import warnings
-from deepchem.models.tensorgraph import model_ops
-from deepchem.models.tensorgraph.activations import get
+from dcCustom.models.tensorgraph import model_ops
+from dcCustom.models.tensorgraph.activations import get
 
 
 class Regularizer(object):

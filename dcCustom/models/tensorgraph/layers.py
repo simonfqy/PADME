@@ -577,32 +577,47 @@ class Dense(SharedVariableScope):
     except:
       pass
 
-  def _build_layer(self, reuse):
-    if self.biases_initializer is None:
-      biases_initializer = None
-    else:
-      biases_initializer = self.biases_initializer()
-    return tf.layers.Dense(
-      self.out_channels,
-      activation=self.activation_fn,
-      use_bias=biases_initializer is not None,
-      kernel_initializer=self.weights_initializer(),
-      bias_initializer=biases_initializer,
-      _scope=self._get_scope_name(),
-      _reuse=reuse)
+  # def _build_layer(self, reuse):
+  #   if self.biases_initializer is None:
+  #     biases_initializer = None
+  #   else:
+  #     biases_initializer = self.biases_initializer()
+  #   # TODO: Need to change it to tf.layers.Dense() after updating TF.
+  #   return tf.layers.Dense(
+  #     self.out_channels,
+  #     activation=self.activation_fn,
+  #     use_bias=biases_initializer is not None,
+  #     kernel_initializer=self.weights_initializer(),
+  #     bias_initializer=biases_initializer,
+  #     _scope=self._get_scope_name(),
+  #     _reuse=reuse)
 
   def create_tensor(self, in_layers=None, set_tensors=True, **kwargs):
     inputs = self._get_input_tensors(in_layers)
     if len(inputs) != 1:
       raise ValueError("Dense layer can only have one input")
-    parent = inputs[0]    
+    parent = inputs[0]
+    if self.biases_initializer is None:
+      biases_initializer = None
+    else:
+      biases_initializer = self.biases_initializer()    
     for reuse in (self._reuse, False):
-      layer = self._build_layer(reuse)
+      #layer = self._build_layer(reuse)
+      dense_fn = lambda x: tf.contrib.layers.fully_connected(x,
+        num_outputs=self.out_channels,
+        activation_fn=self.activation_fn,
+        weights_initializer=self.weights_initializer(),
+        biases_initializer=biases_initializer,
+        scope=self._get_scope_name(),
+        reuse=reuse,
+        trainable=True)
       try:
         if self.time_series:
-          out_tensor = tf.map_fn(layer, parent)
+          #out_tensor = tf.map_fn(layer, parent)
+          out_tensor = tf.map_fn(dense_fn, parent)
         else:
-          out_tensor = layer(parent)
+          #out_tensor = layer(parent)
+          out_tensor = dense_fn(parent)
         break
       except ValueError:
         if reuse:

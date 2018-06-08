@@ -129,8 +129,8 @@ class WeaveModel(TensorGraph):
         out_channels=self.n_graph_feat,
         activation_fn=tf.nn.tanh,
         in_layers=weave_layer3A)
-    #batch_norm1 = BatchNormalization(epsilon=1e-5, mode=1, in_layers=[dense1])
-    batch_norm1 = BatchNorm(epsilon=1e-5, in_layers=[dense1])
+    batch_norm1 = BatchNormalization(epsilon=1e-5, mode=1, in_layers=[dense1])
+    #batch_norm1 = BatchNorm(epsilon=1e-5, in_layers=[dense1])
     weave_gather = WeaveGather(
         self.batch_size,
         n_input=self.n_graph_feat,
@@ -692,16 +692,16 @@ class GraphConvModel(TensorGraph):
     for layer_size in self.graph_conv_layers:
       gc1_in = [in_layer, self.degree_slice, self.membership] + self.deg_adjs
       gc1 = GraphConv(layer_size, activation_fn=tf.nn.relu, in_layers=gc1_in)
-      batch_norm1 = BatchNorm(in_layers=[gc1])
-      #batch_norm1 = BatchNormalization(epsilon=1e-5, in_layers=[gc1])
+      #batch_norm1 = BatchNorm(in_layers=[gc1])
+      batch_norm1 = BatchNormalization(epsilon=1e-5, in_layers=[gc1])
       gp_in = [batch_norm1, self.degree_slice, self.membership] + self.deg_adjs
       in_layer = GraphPool(in_layers=gp_in)
     dense = Dense(
         out_channels=self.dense_layer_size,
         activation_fn=tf.nn.relu,
         in_layers=[in_layer])
-    batch_norm3 = BatchNorm(in_layers=[dense])
-    #batch_norm3 = BatchNormalization(epsilon=1e-5, in_layers=[dense])
+    #batch_norm3 = BatchNorm(in_layers=[dense])
+    batch_norm3 = BatchNormalization(epsilon=1e-5, in_layers=[dense])
     batch_norm3 = Dropout(self.dropout_prob, in_layers=[batch_norm3])
     readout = GraphGather(
         batch_size=self.batch_size,
@@ -711,6 +711,7 @@ class GraphConvModel(TensorGraph):
     readout = Dropout(self.dropout_prob, in_layers=[readout])
     
     prot_desc = Dropout(self.dropout_prob, in_layers = [self.prot_desc])
+    readout = TrimGraphOutput([readout, prot_desc])
     recent = Concat(in_layers=[readout, prot_desc])
     for _ in range(self.num_dense_layer):
       dense_combined = Dense(out_channels=self.dense_cmb_layer_size, activation_fn=tf.nn.relu,
