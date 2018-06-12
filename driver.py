@@ -171,7 +171,7 @@ def run_analysis(_):
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
   # a validation dataset.
-
+  #assert False
   time_start_fitting = time.time()
   train_scores_list = []
   valid_scores_list = []
@@ -300,7 +300,7 @@ def run_analysis(_):
         train_score_dict = train_score[model_name]
         valid_score_dict = valid_score[model_name]
         
-        if len(aggregated_tasks) > 1:
+        if len(tasks) > 1:
           train_score_dict = train_score[model_name]['averaged']
           valid_score_dict = valid_score[model_name]['averaged']          
 
@@ -332,7 +332,7 @@ def run_analysis(_):
   
   time_finish_fitting = time.time()
   
-  results_file = 'results_' + model
+  results_file = './results/results_' + model
   
   if mode == 'classification':
     results_file += '_cls'
@@ -363,7 +363,7 @@ def run_analysis(_):
         train_score_dict = train_score[model_name]
         valid_score_dict = valid_score[model_name]
         
-        if len(aggregated_tasks) > 1:
+        if len(tasks) > 1:
           train_score_dict = train_score[model_name]['averaged']
           valid_score_dict = valid_score[model_name]['averaged']          
 
@@ -404,7 +404,7 @@ def run_analysis(_):
       valid_score_dict = valid_score[model_name]
       if test:
         test_score_dict = test_score[model_name]
-      if len(aggregated_tasks) > 1:
+      if len(tasks) > 1:
         train_score_dict = train_score[model_name]['averaged']
         valid_score_dict = valid_score[model_name]['averaged']
         if test:
