@@ -26,7 +26,7 @@ class TensorGraph(Model):
 
   def __init__(self,
                tensorboard=False,
-               tensorboard_log_frequency=40,
+               tensorboard_log_frequency=50,
                batch_size=100,
                random_seed=None,
                use_queue=True,
@@ -592,7 +592,25 @@ class TensorGraph(Model):
     dataset = NumpyDataset(X=X, y=None)
     return self.predict_uncertainty(dataset, masks)
   
-  def predict(self, dataset, transformers=[], outputs=None):
+  @staticmethod
+  def output_predictions(n_tasks, dataset, y_preds, csv_out):
+    """
+    Writes predictions to file.
+
+    Args:
+      y_preds: np.ndarray
+      csv_out: CSV file name.
+    """
+    mol_ids = dataset.ids
+    y_preds = np.reshape(y_preds, (len(y_preds), n_tasks))
+    assert len(y_preds) == len(mol_ids)
+    with open(csv_out, "w") as csvfile:
+      csvwriter = csv.writer(csvfile)
+      csvwriter.writerow(["Compound", "proteinName", "protein_dataset"] + dataset.get_task_names())
+      for mol_id, y_pred in zip(mol_ids, y_preds):
+        csvwriter.writerow([mol_id] + list(y_pred))
+
+  def predict(self, dataset, transformers=[], outputs=None, csv_out=None):
     """
     Uses self to make predictions on provided Dataset object.
 
@@ -612,7 +630,10 @@ class TensorGraph(Model):
     results: numpy ndarray or list of numpy ndarrays
     """
     generator = self.default_generator(dataset, predict=True, pad_batches=False)
-    return self.predict_on_generator(generator, transformers, outputs)
+    predictions = self.predict_on_generator(generator, transformers, outputs)
+    if csv_out is not None:
+      output_predictions(len(self.outputs), dataset, predictions, csv_out)
+    return predictions
 
   # TODO: I left it as a stub. Need to populate it if required.
   def predict_uncertainty(self, dataset, masks=50):
