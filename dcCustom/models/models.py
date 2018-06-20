@@ -38,6 +38,7 @@ class Model(BaseEstimator):
                verbose=True,
                prot_desc_dict=None,
                prot_desc_length=None,
+               restore_model=False,
                **kwargs):
     """Abstract class for all models.
     Parameters:
@@ -49,10 +50,14 @@ class Model(BaseEstimator):
     """
     self.model_dir_is_temp = False
     if model_dir is not None:
-      if os.path.exists(model_dir):
-        shutil.rmtree(model_dir)
-      os.makedirs(model_dir)
+      if not restore_model:
+        if os.path.exists(model_dir):
+          shutil.rmtree(model_dir)
+        os.makedirs(model_dir)
+      else:
+        assert os.path.exists(model_dir)
     else:
+      assert not restore_model
       model_dir = tempfile.mkdtemp()
       self.model_dir_is_temp = True
     self.model_dir = model_dir
