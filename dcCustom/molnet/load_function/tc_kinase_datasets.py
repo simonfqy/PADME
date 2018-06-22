@@ -23,7 +23,7 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False, 
-  cold_target=False, prot_seq_dict=None): 
+  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -42,6 +42,8 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
     delim = "/"
     if predict_cold:
       delim = "_cold" + delim
+    elif split_warm:
+      delim = "_warm" + delim
     elif cold_drug:
       delim = "_cold_drug" + delim
     elif cold_target:
@@ -88,7 +90,8 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
   splitters = {
       'index': deepchem.splits.IndexSplitter(),
       'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold, cold_drug=cold_drug, 
-        cold_target=cold_target, prot_seq_dict=prot_seq_dict),
+        cold_target=cold_target, split_warm=split_warm, prot_seq_dict=prot_seq_dict,
+        threshold=filter_threshold),
       'scaffold': deepchem.splits.ScaffoldSplitter(),
       'butina': deepchem.splits.ButinaSplitter(),
       'task': deepchem.splits.TaskSplitter()
