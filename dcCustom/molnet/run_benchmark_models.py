@@ -41,7 +41,9 @@ def model_regression(
             plot=False,
             verbose_search=False,
             log_file=None,
-            aggregated_tasks=[]):
+            aggregated_tasks=[],
+            predict_only=False,
+            prediction_file=None):
   train_scores = {}
   valid_scores = {}
   test_scores = {}
@@ -80,7 +82,8 @@ def model_regression(
         tensorboard=tensorboard,
         model_dir = model_dir,
         prot_desc_dict=prot_desc_dict,
-        prot_desc_length=prot_desc_length)
+        prot_desc_length=prot_desc_length,
+        restore_model=predict_only)
         
   elif model_name == 'mpnn':
     batch_size = hyper_parameters['batch_size']
@@ -110,7 +113,8 @@ def model_regression(
         tensorboard = tensorboard,
         model_dir = model_dir,
         prot_desc_dict = prot_desc_dict,
-        prot_desc_length = prot_desc_length)
+        prot_desc_length = prot_desc_length,
+        restore_model=predict_only)
   
   elif model_name == 'tf_regression':
     layer_sizes = hyper_parameters['layer_sizes']
@@ -145,7 +149,8 @@ def model_regression(
         tensorboard = tensorboard,
         model_dir = model_dir,
         prot_desc_dict=prot_desc_dict,
-        prot_desc_length=prot_desc_length)
+        prot_desc_length=prot_desc_length,
+        restore_model=predict_only)
   
   elif model_name == 'weave_regression':
     batch_size = hyper_parameters['batch_size']
@@ -181,8 +186,14 @@ def model_regression(
       tensorboard = tensorboard,
       model_dir = model_dir,
       prot_desc_dict=prot_desc_dict,
-      prot_desc_length=prot_desc_length)
+      prot_desc_length=prot_desc_length,
+      restore_model=predict_only)
   
+  if predict_only:
+    assert prediction_file is not None
+    model.predict(train_dataset, transformers=transformers, csv_out=prediction_file, tasks=tasks)
+    return None, None, None, None
+
   print('-----------------------------')
   print('Start fitting: %s' % model_name)
   
@@ -255,11 +266,14 @@ def model_classification(
             direction = None,
             no_concordance_index=False,
             seed=123,
-            tensorboard = False,
+            tensorboard = True,
             model_dir="./cls_model_dir",
             plot=False,
             verbose_search=False,
-            log_file=None):
+            log_file=None,            
+            aggregated_tasks=[],
+            predict_only=False,
+            prediction_file=None):
   # TODO: need to copy the code changes related to plotting from the function above.
   train_scores = {}
   valid_scores = {}
@@ -301,7 +315,8 @@ def model_classification(
         tensorboard=tensorboard,
         model_dir = model_dir,
         prot_desc_dict=prot_desc_dict,
-        prot_desc_length=prot_desc_length)
+        prot_desc_length=prot_desc_length,
+        restore_model=predict_only)
 
   elif model_name == 'mpnn':
     batch_size = hyper_parameters['batch_size']
@@ -331,7 +346,8 @@ def model_classification(
         tensorboard = tensorboard,
         model_dir = model_dir,
         prot_desc_dict = prot_desc_dict,
-        prot_desc_length = prot_desc_length)
+        prot_desc_length = prot_desc_length,
+        restore_model=predict_only)
 
   elif model_name == 'tf':
     layer_sizes = hyper_parameters['layer_sizes']
@@ -366,7 +382,8 @@ def model_classification(
         tensorboard=tensorboard,
         model_dir=model_dir,
         prot_desc_dict=prot_desc_dict,
-        prot_desc_length=prot_desc_length)
+        prot_desc_length=prot_desc_length,
+        restore_model=predict_only)
   
   elif model_name == 'weave':
     batch_size = hyper_parameters['batch_size']
@@ -403,7 +420,8 @@ def model_classification(
       tensorboard = tensorboard,
       model_dir = model_dir,
       prot_desc_dict=prot_desc_dict,
-      prot_desc_length=prot_desc_length)
+      prot_desc_length=prot_desc_length,
+      restore_model=predict_only)
   
   print('-----------------------------')
   print('Start fitting: %s' % model_name)
