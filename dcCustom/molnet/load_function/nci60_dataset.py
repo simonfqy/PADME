@@ -27,13 +27,16 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
   cold_drug=False, cold_target=False, split_warm=False, filter_threshold=0,
   prot_seq_dict=None): 
   
+  data_to_train = 'kiba'
+  
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    file_name = "restructured_toy.csv"
+    file_name = "restructured_toy"
     
   elif mode == 'classification':   
-    file_name = "restructured_bin.csv"
+    file_name = "restructured_bin"
 
+  file_name = file_name + "_" + data_to_train
   data_dir = "NCI60_data/"
   dataset_file = os.path.join(data_dir, file_name)
   df = pd.read_csv(dataset_file, header = 0, index_col=False)
@@ -41,15 +44,21 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
   tasks = headers[:-3]
   
   if reload:
-    delim = "/"    
+    delim = "_" + data_to_train + "/"    
     save_dir = os.path.join(data_dir, featurizer + delim + mode + "/" + split)
     loaded, all_dataset, transformers = deepchem.utils.save.load_dataset_from_disk(
         save_dir)
     if loaded:
-      return tasks, all_dataset, transformers 
+      return tasks, all_dataset, transformers
 
-  loaded, _, transformers = dcCustom.molnet.load_toxcast(featurizer = featurizer, split= split, 
-    cross_validation=True, reload=True, mode = mode)
+  if data_to_train == "tc":
+    loaded, _, transformers = dcCustom.molnet.load_toxcast(featurizer = featurizer, split= split, 
+      cross_validation=True, reload=True, mode = mode)
+  else:
+    # We assume there are only toxcast and kiba as the choice now.
+    loaded, _, transformers = dcCustom.molnet.load_kiba(featurizer = featurizer, split= split, 
+      cross_validation=True, reload=True, mode = mode, split_warm=True, filter_threshold=6)
+  
   assert loaded
   
   if featurizer == 'Weave':

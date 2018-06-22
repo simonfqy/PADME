@@ -22,7 +22,7 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 def load_kiba(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False,
-  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None): 
+  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None, currdir="./"): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -36,7 +36,7 @@ def load_kiba(featurizer = 'Weave', cross_validation=False, test=False, split='r
     tasks = ['kiba_bin']
     file_name = "restructured_bin.csv"
 
-  data_dir = "KIBA_data/"
+  data_dir = currdir + "KIBA_data/"
   if reload:
     delim = "/"
     if filter_threshold > 0:
