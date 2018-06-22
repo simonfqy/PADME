@@ -9,6 +9,7 @@ import numpy as np
 import tensorflow as tf
 import math
 import pdb
+import csv
 from tensorflow.python.pywrap_tensorflow_internal import NewCheckpointReader
 from tensorflow.python import debug as tf_debug
 
@@ -602,15 +603,22 @@ class TensorGraph(Model):
       csv_out: CSV file name.
     """
     mol_ids = dataset.ids
+    proteins = dataset.X[:, 1]    
     y_preds = np.reshape(y_preds, (len(y_preds), n_tasks))
     assert len(y_preds) == len(mol_ids)
     with open(csv_out, "w") as csvfile:
       csvwriter = csv.writer(csvfile)
       csvwriter.writerow(["Compound", "proteinName", "protein_dataset"] + dataset.get_task_names())
-      for mol_id, y_pred in zip(mol_ids, y_preds):
-        csvwriter.writerow([mol_id] + list(y_pred))
+      for i in range(len(y_preds)):
+        mol_id = mol_ids[i]
+        y_pred = y_preds[i]
+        protein = proteins[i]
+        prot_source_and_name = protein.get_name()
+        prot_name = prot_source_and_name[1]
+        prot_dataset = prot_source_and_name[0]
+        csvwriter.writerow([mol_id, prot_name, prot_dataset] + list(y_pred))
 
-  def predict(self, dataset, transformers=[], outputs=None, csv_out=None):
+  def predict(self, dataset, transformers=[], outputs=None, csv_out=None, tasks=None):
     """
     Uses self to make predictions on provided Dataset object.
 
@@ -629,10 +637,13 @@ class TensorGraph(Model):
     -------
     results: numpy ndarray or list of numpy ndarrays
     """
-    generator = self.default_generator(dataset, predict=True, pad_batches=False)
-    predictions = self.predict_on_generator(generator, transformers, outputs)
+    generator = self.default_generator(dataset, predict=True, pad_batches=False)    
     if csv_out is not None:
-      output_predictions(len(self.outputs), dataset, predictions, csv_out)
+      self.restore()
+      predictions = self.predict_on_generator(generator, transformers, outputs)
+      self.output_predictions(len(tasks), dataset, predictions, csv_out)
+    else:
+      predictions = self.predict_on_generator(generator, transformers, outputs)
     return predictions
 
   # TODO: I left it as a stub. Need to populate it if required.
