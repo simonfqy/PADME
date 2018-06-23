@@ -79,7 +79,12 @@ def featurize_smiles_df(df, featurizer, field, log_every_N=1000, verbose=True):
   sample_elems = df[field].tolist()
 
   features = []
+  stderr_fileno = sys.stderr.fileno()
+  stderr_save = os.dup(stderr_fileno)
+  stderr_fd = open('./logs/error.log', 'a')
+  os.dup2(stderr_fd.fileno(), stderr_fileno)
   for ind, elem in enumerate(sample_elems):
+
     mol = Chem.MolFromSmiles(elem)    
     # TODO (ytz) this is a bandage solution to reorder the atoms so
     # that they're always in the same canonical order. Presumably this
@@ -90,6 +95,9 @@ def featurize_smiles_df(df, featurizer, field, log_every_N=1000, verbose=True):
     if ind % log_every_N == 0:
       log("Featurizing sample %d" % ind, verbose)
     features.append(featurizer.featurize([mol], smiles=elem))
+
+  stderr_fd.close()
+  os.dup2(stderr_save, stderr_fileno)
   
   valid_inds = np.array(
       [1 if elt.size > 0 else 0 for elt in features], dtype=bool)

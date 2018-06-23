@@ -252,6 +252,7 @@ class Dataset(object):
     else:
       X_stds = np.sqrt(X_m2 / n)
       y_stds = np.sqrt(y_m2 / n)
+    
     if X_stats and not y_stats:
       return X_means, X_stds
     elif y_stats and not X_stats:
@@ -902,7 +903,7 @@ class DiskDataset(Dataset):
     def generator():
       for shard_num, row in self.metadata_df.iterrows():
         X, y, w, ids = self.get_shard(shard_num)
-        newx, newy, neww = fn(X, y, w)
+        newx, newy, neww = fn(X, y, w)        
         yield (newx, newy, neww, ids)
 
     return DiskDataset.create_dataset(
