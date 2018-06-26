@@ -328,7 +328,6 @@ class Metric(object):
 
     if self.arithmetic_mean:
       total_datapoints = 0
-      #coefficients = []
       num_observations = []
       aggregated_num_obs = {meta_task_name: 0 for meta_task_name in metatask_to_task}
       for task in range(n_tasks):
@@ -401,7 +400,6 @@ class Metric(object):
     
     if plot and do_aggregation:
       # In this case we want to plot, but haven't done so for the aggregated tasks. Doing it here.
-      #for i, task_name in enumerate(tasks)
       for meta_task_name in meta_task_list:
         min_list = []
         max_list = []        
@@ -415,15 +413,15 @@ class Metric(object):
           w_task = w[:, task_ind]
           y_true_task, y_pred_task = self.get_y_vectors(y_task, y_pred_task, w_task)
 
-          plt.plot(y_true_task, y_pred_task, 'b.')              
+          plt.plot(y_pred_task, y_true_task, 'b.')              
           y_vector = np.append(y_true_task, y_pred_task)
           min_list.append(np.amin(y_vector))
           max_list.append(np.amax(y_vector))
         min_value = np.amin(np.array(min_list)) 
         max_value = np.amax(np.array(max_list))         
-        plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k')
-        plt.xlabel("true value")
-        plt.ylabel("predicted value")   
+        plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k')        
+        plt.xlabel("predicted value")   
+        plt.ylabel("true value")
         if is_training_set:
           meta_task_name = meta_task_name + "_trainset"
         if model_name is not None:
@@ -580,13 +578,14 @@ class Metric(object):
               original_y_pred, w, plot=False)
             metric_value_dict[some_metric.metric.__name__] = some_metric_value
 
-        plt.plot(y_true, y_pred, 'b.')
+        plt.plot(y_pred, y_true, 'b.')
         y_vector = np.append(y_true, y_pred)
         min_value = np.amin(y_vector)
         max_value = np.amax(y_vector)        
         plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k')
-        plt.xlabel("true value")
-        plt.ylabel("predicted value")        
+        
+        plt.xlabel("predicted value")
+        plt.ylabel("true value")        
         i = 0
         for some_metric in all_metrics:
           if some_metric.metric.__name__ in metric_value_dict:            
@@ -612,6 +611,7 @@ class Metric(object):
         plt.close()
 
         np.save("plots/y_pred", y_pred)
+        np.save("plots/y_true", y_true)
         np.save("plots/residuals", residuals)
 
     except (AssertionError, ValueError) as e:
