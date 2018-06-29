@@ -20,8 +20,12 @@ import dcCustom
 from dcCustom.feat import Protein
 
 AR_list = [('toxcast', 'P10275'), ('toxcast', 'O97775'), ('toxcast', 'P15207')]
+AR_list_s = [('toxcast', 'P10275')]
 ER_list = [('toxcast', 'P03372'), ('toxcast', 'P19785'), ('toxcast', 'P49884'), 
   ('toxcast', 'Q92731')]
+ER_list_s = [('toxcast', 'P03372')]
+AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
+AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
 
 PROT_desc_path_list = ['../davis_data/prot_desc.csv', '../metz_data/prot_desc.csv', 
     '../KIBA_data/prot_desc.csv', '../full_toxcast/prot_desc.csv']
@@ -40,7 +44,7 @@ def get_smiles_from_prev(file_name_list=[]):
     smiles_list = restructured.loc[:, 'smiles']
     smiles_list = list(set(smiles_list))
     complete_smiles_list = complete_smiles_list + smiles_list
-  return smiles_list
+  return complete_smiles_list
     
 def load_prot_dict(protein_list, prot_desc_path, sequence_field, 
   phospho_field, pairs_to_choose=[]):
@@ -71,7 +75,7 @@ def load_prot_dict(protein_list, prot_desc_path, sequence_field,
     
 def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_list,
   get_all_compounds=False, take_mol_subset=True, mols_to_choose=2000, prot_pairs_to_choose=[], 
-  output_prefix='AR_ER_intxn'):
+  output_prefix='AR_ER_intxn_s'):
   
   assert dataset_used in ['toxcast', 'kiba']
   invalid_to_canon_smiles = get_canonical_smiles_dict()
@@ -103,7 +107,7 @@ def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_l
       if smiles not in selected_mol_set:
         selected_mol_set.add(smiles)
         selected_mol_list.append(smiles)
-
+  
   loading_functions = {
     'kiba': dcCustom.molnet.load_kiba,
     'toxcast': dcCustom.molnet.load_toxcast,
@@ -142,7 +146,7 @@ def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_l
   print("Time spent in writing: ", end_writing - start_writing)
 
 def synthesize_ranking(prediction_file, output_file, direction=True, dataset_used='toxcast', 
-  weigh_by_occurrence=False):
+  weigh_by_occurrence=False, AR_toxcast_codes=[]):
   assert dataset_used in ['toxcast', 'kiba']
   csv_data = {
     'toxcast': '../full_toxcast/restructured.csv',
@@ -155,6 +159,11 @@ def synthesize_ranking(prediction_file, output_file, direction=True, dataset_use
     tasks, _, _ = dcCustom.molnet.load_kiba(featurizer="ECFP", currdir="../", cross_validation=True, 
       split_warm=True, filter_threshold=6)
 
+  preds_df = pd.read_csv(prediction_file, header=0, index_col=False)
+  compounds = preds_df.loc[:, 'Compound']
+  prot_names = preds_df.loc[:, 'proteinName']
+  prot_sources = preds_df.loc[:, 'protein_dataset']
+  composite_preds = np.zeros_like(preds_df.loc[:, tasks[0]])
   if weigh_by_occurrence:
     datapoints = []
     for task in tasks:
@@ -163,20 +172,17 @@ def synthesize_ranking(prediction_file, output_file, direction=True, dataset_use
     datapoints = np.array(datapoints)
     fractions = []
     for i in range(len(datapoints)):
-      fractions.append(datapoints[i]/datapoints.sum())
-
-    preds_df = pd.read_csv(prediction_file, header=0, index_col=False)
-    compounds = preds_df.loc[:, 'Compound']
-    prot_names = preds_df.loc[:, 'proteinName']
-    prot_sources = preds_df.loc[:, 'protein_dataset']
-    composite_preds = np.zeros_like(preds_df.loc[:, tasks[0]])
+      fractions.append(datapoints[i]/datapoints.sum())    
     for j in range(len(tasks)):
       task = tasks[j]
       pred_task = preds_df.loc[:, task] * fractions[j]
       composite_preds += pred_task
   else:
-    # TODO: finish it.
-    pass
+    AR_toxcast_codes = ['toxcast_' + code for code in AR_toxcast_codes]
+    AR_coef_dict = dict(zip(AR_toxcast_codes, AR_antagonist_score_coef))
+    for task_code in AR_toxcast_codes:
+      pred_task_vector = np.asarray(preds_df.loc[:, task_code])
+      composite_preds += pred_task_vector * AR_coef_dict[task_code]   
     
   if direction:
     neg_composite_preds = -1 * composite_preds
@@ -192,21 +198,31 @@ def synthesize_ranking(prediction_file, output_file, direction=True, dataset_use
         'protein_dataset': prot_sources[i], 'synthesized_score': composite_preds[i]}
       writer.writerow(out_line)  
 
-def compare(file_1, file_2, cutoff=None):
+def compare(file_1, file_2, cutoff=None, exclude_prot=None):
   df_1 = pd.read_csv(file_1, header=0, index_col=False)
   df_2 = pd.read_csv(file_2, header=0, index_col=False)
   if cutoff is not None:
     df_1 = df_1.head(cutoff)
     df_2 = df_2.head(cutoff)
+  if exclude_prot is not None:
+    correct_type = isinstance(exclude_prot, list)
+    assert correct_type
+
   pred_triplets_set_1 = set()
   pred_triplets_set_2 = set()
   for row in df_1.itertuples():
+    if exclude_prot is not None:
+      if (row[3], row[2]) in exclude_prot:
+        continue
     pred_triplets_set_1.add((row[1], row[2], row[3]))
   for row in df_2.itertuples():
+    if exclude_prot is not None:
+      if (row[3], row[2]) in exclude_prot:
+        continue
     pred_triplets_set_2.add((row[1], row[2], row[3]))
   intersec = pred_triplets_set_1.intersection(pred_triplets_set_2)
   print(len(intersec))
-  #pdb.set_trace()
+  pdb.set_trace()
 
 def get_invalid_smiles(out_file='invalid_smiles.csv'):
   err_log = open('../logs/error.log', 'r')
@@ -222,13 +238,13 @@ def get_invalid_smiles(out_file='invalid_smiles.csv'):
   err_log.close()
 
 if __name__ == "__main__":
-  dataset = 'toxcast'
-  #dataset = 'kiba'
-  produce_dataset(dataset_used=dataset, prot_desc_path_list=['../full_toxcast/prot_desc.csv'], 
-    get_all_compounds=True, take_mol_subset=False, prot_pairs_to_choose=AR_list+ER_list)
-  #synthesize_ranking('preds_tc_graphconv.csv', 'ordered_gc.csv',   
+  #dataset = 'toxcast'
+  dataset = 'kiba'
+  # produce_dataset(dataset_used=dataset, prot_desc_path_list=['../full_toxcast/prot_desc.csv'], 
+  #   get_all_compounds=True, take_mol_subset=False, prot_pairs_to_choose=AR_list_s + ER_list_s)
+  # synthesize_ranking('preds_arer_kiba_graphconv.csv', 'ordered_arer_kiba_gc.csv', weigh_by_occurrence=True,
+  #   AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
   # synthesize_ranking('preds_tc_graphconv.csv', 'synthesized_values_gc.csv', 
   #   direction=True, dataset_used=dataset)
-  #compare('ordered_kiba.csv', 'synthesized_values.csv', cutoff=2000)
-  #get_invalid_smiles(out_file = 'invalid_smiles.csv')
-  
+  compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
+  #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
