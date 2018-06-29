@@ -237,6 +237,74 @@ def get_invalid_smiles(out_file='invalid_smiles.csv'):
       writer.writerow(out_line)
   err_log.close()
 
+def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_prot=[], direction=True):
+  assert isinstance(input_files_list, list)
+  assert len(input_files_list) > 0
+  record_dict_list = []
+  triplet_list = []
+  for i, input_file in enumerate(input_files_list):
+    df = pd.read_csv(input_file, header=0, index_col=False)
+    record_dict = {}
+    for row in df.itertuples():
+      if len(exclude_prot) > 0:
+        if (row[3], row[2]) in exclude_prot:
+          continue
+      triplet = (row[1], row[2], row[3])
+      if triplet not in record_dict:
+        record_dict[triplet] = row[4]
+        if i == 0:
+          triplet_list.append(triplet)
+    record_dict_list.append(record_dict)
+  avg_val_list = []
+  for triplet in triplet_list:
+    sum_val = 0
+    for record_dict in record_dict_list:
+      sum_val += record_dict[triplet]
+    avg_val = sum_val/len(record_dict_list)
+    avg_val_list.append(avg_val)
+  avg_val_arr = np.asarray(avg_val_list)
+  if direction:
+    sorted_indices = np.argsort(-1 * avg_val_arr)
+  else:
+    sorted_indices = np.argsort(avg_val_arr)
+  
+  with open(output_file_name, 'w', newline='') as csvfile:
+    fieldnames = ['smiles', 'proteinName', 'protein_dataset', 'avg_score']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    for i in sorted_indices:
+      triplet = triplet_list[i]
+      out_line = {'smiles': triplet[0], 'proteinName': triplet[1], 
+        'protein_dataset': triplet[2], 'avg_score': avg_val_list[i]}
+      writer.writerow(out_line)       
+  
+  
+def calculate_mean_activity(pred_file, top_n=1000, exclude_prot=[]):
+  df_avg = pd.read_csv(pred_file, header=0, index_col=False)
+  df_avg = df_avg.head(top_n)
+  compounds = df_avg.loc[:, 'smiles']
+  compounds_set = set(compounds)
+  subset_values = []
+  population_values = []
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  for row in df_nci60.itertuples():    
+    if not re.search('Prostate', row[1], re.I):
+      continue
+    if np.isnan(row[7]):
+      continue
+    population_values.append(row[7])
+    if row[3] in compounds_set:
+      subset_values.append(row[7])
+  population_values = np.asarray(population_values)
+  subset_values = np.asarray(subset_values)
+  print('For Prostate Cancer cell lines: ')
+  print('Total number of data points: ', len(population_values))
+  print('Number of subset data points: ', len(subset_values))
+  print('Mean value of logGI50 for all Prostate cancer cell lines: ', np.nanmean(population_values))
+  print('Standard deviation of logGI50 for all Prostate cancer cell lines: ', np.std(population_values))
+  print('Mean value of logGI50 for subset compounds: ', np.nanmean(subset_values))
+  print('Standard deviation of logGI50 for subset compounds: ', np.std(subset_values))
+
 if __name__ == "__main__":
   #dataset = 'toxcast'
   dataset = 'kiba'
@@ -246,5 +314,7 @@ if __name__ == "__main__":
   #   AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
   # synthesize_ranking('preds_tc_graphconv.csv', 'synthesized_values_gc.csv', 
   #   direction=True, dataset_used=dataset)
-  compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
+  #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
+  #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
+  calculate_mean_activity('avg_ar_tc.csv', top_n=1000)
