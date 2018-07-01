@@ -279,31 +279,50 @@ def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_p
       writer.writerow(out_line)       
   
   
-def calculate_mean_activity(pred_file, top_n=1000, exclude_prot=[]):
+def calculate_mean_activity(pred_file, top_n_list = [100, 1000, 54000], exclude_prot=[],
+  out_file='mean_logGI50.csv'):
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
-  df_avg = df_avg.head(top_n)
-  compounds = df_avg.loc[:, 'smiles']
-  compounds_set = set(compounds)
-  subset_values = []
-  population_values = []
+  top_n_list = [len(df_avg)] + top_n_list
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
-  for row in df_nci60.itertuples():    
-    if not re.search('Prostate', row[1], re.I):
-      continue
-    if np.isnan(row[7]):
-      continue
-    population_values.append(row[7])
-    if row[3] in compounds_set:
-      subset_values.append(row[7])
-  population_values = np.asarray(population_values)
-  subset_values = np.asarray(subset_values)
-  print('For Prostate Cancer cell lines: ')
-  print('Total number of data points: ', len(population_values))
-  print('Number of subset data points: ', len(subset_values))
-  print('Mean value of logGI50 for all Prostate cancer cell lines: ', np.nanmean(population_values))
-  print('Standard deviation of logGI50 for all Prostate cancer cell lines: ', np.std(population_values))
-  print('Mean value of logGI50 for subset compounds: ', np.nanmean(subset_values))
-  print('Standard deviation of logGI50 for subset compounds: ', np.std(subset_values))
+  panel = 'Prostate'
+  dict_list = []
+  for top_n in top_n_list:
+    df_avg_subset = df_avg.head(top_n)
+    compounds = df_avg_subset.loc[:, 'smiles']
+    compounds_set = set(compounds)        
+    cell_lines_to_values = {}  
+    
+    for row in df_nci60.itertuples():    
+      if not re.search(panel, row[1], re.I):
+        continue
+      if np.isnan(row[7]):
+        continue            
+      if row[3] not in compounds_set:
+        continue
+      if row[2] not in cell_lines_to_values:
+        cell_lines_to_values[row[2]] = []
+      cell_lines_to_values[row[2]].append(row[7])
+    dict_list.append(cell_lines_to_values)
+
+  cell_line_list = list(dict_list[0])
+  
+  with open(out_file, 'w', newline='') as csvfile:
+    fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'mean value', 
+      'standard deviation']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    out_line = {'Panel': panel}
+    for cell_line in cell_line_list:
+      out_line.update({'cell line': cell_line})
+      for i, top_n in enumerate(top_n_list):
+        cell_lines_to_values = dict_list[i]
+        if cell_line not in cell_lines_to_values:
+          continue
+        values = cell_lines_to_values[cell_line]
+        values = np.asarray(values)
+        out_line.update({'top_n': top_n, 'num_observation': len(values), 'mean value': np.mean(values),
+          'standard deviation': np.std(values)})
+        writer.writerow(out_line) 
 
 if __name__ == "__main__":
   #dataset = 'toxcast'
@@ -317,4 +336,4 @@ if __name__ == "__main__":
   #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
-  calculate_mean_activity('avg_ar_tc.csv', top_n=1000)
+  calculate_mean_activity('avg_ar_tc.csv')
