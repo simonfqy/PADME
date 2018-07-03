@@ -322,7 +322,102 @@ def calculate_mean_activity(pred_file, top_n_list = [100, 1000, 54000], exclude_
         values = np.asarray(values)
         out_line.update({'top_n': top_n, 'num_observation': len(values), 'mean value': np.mean(values),
           'standard deviation': np.std(values)})
-        writer.writerow(out_line) 
+        writer.writerow(out_line)
+
+def get_dcg(value_array):
+  length = len(value_array)
+  terms = np.empty_like(value_array, dtype=np.float64)
+  for i in range(length):
+    terms[i] = value_array[i]/np.log2(i + 2)
+  return np.sum(terms)
+
+def ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, sorted_values_array, 
+  cell_line=None, panel='Prostate', direction=True):
+  # If direction is True, the smaller values are expected to rank higher.
+  values_of_predicted_ranking = []
+  for cpd in ordered_cpd_list:
+    values_of_predicted_ranking.append(panel_cline_and_compound_to_value[(panel, cell_line, cpd)])
+  values_of_predicted_ranking = np.asarray(values_of_predicted_ranking)
+  total_num = len(ordered_cpd_list)
+  if direction:
+    max_val = sorted_values_array[len(sorted_values_array) - 1]
+  else:
+    min_val = sorted_values_array[len(sorted_values_array) - 1]
+  sorted_values_array = sorted_values_array[:total_num]
+  if direction:
+    sorted_values_array = max_val - sorted_values_array
+    values_of_predicted_ranking = max_val - values_of_predicted_ranking
+  else:
+     sorted_values_array = sorted_values_array - min_val
+    values_of_predicted_ranking = values_of_predicted_ranking - min_val
+  dcg = get_dcg(values_of_predicted_ranking)
+  idcg = get_dcg(sorted_values_array)
+  return dcg/idcg, dcg, idcg
+
+def calculate_ndcg(pred_file, top_n_list = [100, 1000, 54000], exclude_prot=[],
+  out_file='normalized_dcg_logGI50.csv'):
+  # Calculates the normalized discounted cumulative gain using the logGI50 value as the relevance score.
+  df_avg = pd.read_csv(pred_file, header=0, index_col=False)
+  top_n_list = [len(df_avg)] + top_n_list
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  dict_list = []
+  panel = 'Prostate'
+  panel_cline_and_compound_to_value = {}
+  for row in df_nci60.itertuples():
+    if not re.search(panel, row[1], re.I):
+      continue
+    if np.isnan(row[7]):
+      continue
+    triplet = (panel, row[2], row[3])
+    panel_cline_and_compound_to_value[triplet] = row[7]  
+
+  values_list = [v for v in panel_cline_and_compound_to_value.values()]
+  values_array = np.asarray(values_list)
+  sorted_values_array = np.sort(values_array)
+
+  for top_n in top_n_list:
+    df_avg_subset = df_avg.head(top_n)
+    compounds = df_avg_subset.loc[:, 'smiles']
+    compounds_set = set(compounds)
+    assert len(compounds) == len(compounds_set)        
+    cell_lines_to_ordered_compounds = {}
+    cell_lines_to_compound_set = {}
+    
+    for row in df_nci60.itertuples():    
+      if not re.search(panel, row[1], re.I):
+        continue
+      if np.isnan(row[7]):
+        continue            
+      if row[3] not in compounds_set:
+        continue
+      if row[2] not in cell_lines_to_compound_set:
+        cell_lines_to_compound_set[row[2]] = set()      
+      cell_lines_to_compound_set[row[2]].add(row[3])
+
+    for key in cell_lines_to_compound_set:
+      ordered_cpd_list = [cpd for cpd in compounds if cpd in cell_lines_to_compound_set[key] ]
+      cell_lines_to_ordered_compounds[key] = ordered_cpd_list  
+    dict_list.append(cell_lines_to_ordered_compounds)  
+
+  cell_line_list = list(dict_list[0])
+  
+  with open(out_file, 'w', newline='') as csvfile:
+    fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'nDCG', 'DCG', 'iDCG']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    out_line = {'Panel': panel}
+    for cell_line in cell_line_list:
+      out_line.update({'cell line': cell_line})
+      for i, top_n in enumerate(top_n_list):
+        cell_lines_to_ordered_compounds = dict_list[i]
+        if cell_line not in cell_lines_to_ordered_compounds:
+          continue
+        ordered_cpd_list = cell_lines_to_ordered_compounds[cell_line]
+        normalized_dcg, dcg, idcg = ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, 
+          sorted_values_array, cell_line=cell_line, panel=panel)
+        out_line.update({'top_n': top_n, 'num_observation': len(ordered_cpd_list), 
+          'nDCG': normalized_dcg, 'DCG': dcg, 'iDCG': idcg})
+        writer.writerow(out_line)
 
 if __name__ == "__main__":
   #dataset = 'toxcast'
@@ -336,4 +431,7 @@ if __name__ == "__main__":
   #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
-  calculate_mean_activity('avg_ar_tc.csv')
+  #calculate_mean_activity('avg_ar_tc.csv')
+  calculate_ndcg('avg_ar_tc.csv')
+  # a = get_dcg(np.array([3, 2, 3, 0, 1, 2]))
+  # print(a)
