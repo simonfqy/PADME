@@ -348,7 +348,7 @@ def ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, sorted_values
     sorted_values_array = max_val - sorted_values_array
     values_of_predicted_ranking = max_val - values_of_predicted_ranking
   else:
-     sorted_values_array = sorted_values_array - min_val
+    sorted_values_array = sorted_values_array - min_val
     values_of_predicted_ranking = values_of_predicted_ranking - min_val
   dcg = get_dcg(values_of_predicted_ranking)
   idcg = get_dcg(sorted_values_array)
@@ -363,14 +363,17 @@ def calculate_ndcg(pred_file, top_n_list = [100, 1000, 54000], exclude_prot=[],
   dict_list = []
   panel = 'Prostate'
   panel_cline_and_compound_to_value = {}
+  triplet_set = set()
   for row in df_nci60.itertuples():
+    triplet = (panel, row[2], row[3])
+    assert triplet not in triplet_set
+    triplet_set.add(triplet)
     if not re.search(panel, row[1], re.I):
       continue
     if np.isnan(row[7]):
-      continue
-    triplet = (panel, row[2], row[3])
+      continue    
     panel_cline_and_compound_to_value[triplet] = row[7]  
-
+  
   values_list = [v for v in panel_cline_and_compound_to_value.values()]
   values_array = np.asarray(values_list)
   sorted_values_array = np.sort(values_array)
@@ -419,6 +422,60 @@ def calculate_ndcg(pred_file, top_n_list = [100, 1000, 54000], exclude_prot=[],
           'nDCG': normalized_dcg, 'DCG': dcg, 'iDCG': idcg})
         writer.writerow(out_line)
 
+def plot_values(panel='Prostate', clines=['DU-145', 'PC-3'], plot_all_panels=True, threshold=100):  
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  panel_list = []
+  panel_set = set()
+  if plot_all_panels:
+    panel_clines_to_value_list = {}
+    clines = []
+  else:
+    panel_list = [panel] * len(clines)
+    tuples_list = list(zip(panel_list, clines))
+    panel_clines_to_value_list = dict(zip(tuples_list, [[], []]))
+  for row in df_nci60.itertuples():
+    if plot_all_panels:
+      panel = row[1].rstrip()
+      if panel not in panel_set:
+        panel_list.append(panel)
+        panel_set.add(panel)
+    else:
+      if not re.search(panel, row[1], re.I):
+        continue
+
+    if np.isnan(row[7]):
+      continue
+
+    if plot_all_panels:
+      cline = row[2].rstrip()
+      if (panel, cline) not in panel_clines_to_value_list:
+        panel_clines_to_value_list[(panel, cline)] = []
+      panel_clines_to_value_list[(panel, cline)].append(row[7])
+    else:
+      for cline in clines:
+        if re.search(cline, row[2], re.I):
+          panel_clines_to_value_list[(panel, cline)].append(row[7])
+
+  for key in panel_clines_to_value_list: 
+    values = np.asarray(panel_clines_to_value_list[key])
+    if len(values) <= threshold:
+      continue
+    num_bins = 50
+    fig, ax = plt.subplots()  
+    #n, bins, patches = ax.hist(interactions, num_bins, density=1)
+    min_val = values.min    
+    max_val = values.max
+    #ax.hist(values, num_bins, range=(np.floor(min_val), np.ceil(max_val)))
+    ax.hist(values, num_bins)
+    ax.set_xlabel('logGI50 values')
+    ax.set_ylabel('Occurrence')
+    ax.set_title('Histogram of logGI50 values for cell line ' + key[1]) 
+    cell_line = key[1]
+    cell_line = cell_line.replace('/', '.')   
+    image_name = "plots/" + key[0] + '_' + cell_line + ".png"
+    plt.savefig(image_name)
+    plt.close()
+
 if __name__ == "__main__":
   #dataset = 'toxcast'
   dataset = 'kiba'
@@ -431,7 +488,7 @@ if __name__ == "__main__":
   #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
-  #calculate_mean_activity('avg_ar_tc.csv')
-  calculate_ndcg('avg_ar_tc.csv')
-  # a = get_dcg(np.array([3, 2, 3, 0, 1, 2]))
-  # print(a)
+  calculate_mean_activity('avg_ar_tc.csv')
+  #calculate_ndcg('avg_ar_tc.csv')
+  #plot_values()
+  
