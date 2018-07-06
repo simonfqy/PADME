@@ -30,11 +30,14 @@ AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
 PROT_desc_path_list = ['../davis_data/prot_desc.csv', '../metz_data/prot_desc.csv', 
     '../KIBA_data/prot_desc.csv', '../full_toxcast/prot_desc.csv']
 
-def get_canonical_smiles_dict(file_name='invalid_smiles_canonicalized.csv'):
+def get_canonical_smiles_dict(file_name='invalid_smiles_canonicalized.csv', reverse=False):
   smiles_file = pd.read_csv(file_name, header=0, index_col=False)
   invalid_smiles = smiles_file.iloc[:, 0]
   canonical_smiles = smiles_file.iloc[:, 1]
-  smiles_dict = dict(zip(invalid_smiles, canonical_smiles))
+  if reverse:
+    smiles_dict = dict(zip(canonical_smiles, invalid_smiles))    
+  else:
+    smiles_dict = dict(zip(invalid_smiles, canonical_smiles))
   return smiles_dict
   
 def get_smiles_from_prev(file_name_list=[]):
@@ -279,32 +282,59 @@ def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_p
       writer.writerow(out_line)       
   
   
-def calculate_mean_activity(pred_file, top_n_list = [100, 1000, 54000], exclude_prot=[],
-  out_file='mean_logGI50.csv'):
+def calculate_mean_activity(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
+  out_file='mean_logGI50.csv', threshold=2000):
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
-  top_n_list = [len(df_avg)] + top_n_list
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
   panel = 'Prostate'
-  dict_list = []
-  for top_n in top_n_list:
-    df_avg_subset = df_avg.head(top_n)
-    compounds = df_avg_subset.loc[:, 'smiles']
-    compounds_set = set(compounds)        
-    cell_lines_to_values = {}  
-    
-    for row in df_nci60.itertuples():    
-      if not re.search(panel, row[1], re.I):
-        continue
-      if np.isnan(row[7]):
-        continue            
-      if row[3] not in compounds_set:
-        continue
-      if row[2] not in cell_lines_to_values:
-        cell_lines_to_values[row[2]] = []
-      cell_lines_to_values[row[2]].append(row[7])
-    dict_list.append(cell_lines_to_values)
+  cell_lines_to_pairs = {}
+  cline_to_topn_list = {}
+  cline_and_topn_to_value_list = {}
+  compounds = df_avg.loc[:,'smiles']
+  compounds_set = set(compounds)
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  
+  for row in df_nci60.itertuples():    
+    if not re.search(panel, row[1], re.I):
+      continue
+    if np.isnan(row[7]):
+      continue     
+    smiles = row[3]    
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]
+    # if smiles not in compounds_set:
+    #   pdb.set_trace()
+    #   #continue
+    if row[2] not in cell_lines_to_pairs:
+      cell_lines_to_pairs[row[2]] = {}
+    cell_lines_to_pairs[row[2]].update({smiles: row[7]})
 
-  cell_line_list = list(dict_list[0])
+  for cline in cell_lines_to_pairs:
+    compound_to_value = cell_lines_to_pairs[cline]
+    size = len(compound_to_value)
+    if size < threshold:
+      continue
+    cline_top_n_list = [size] + top_n_list    
+    cline_to_topn_list[cline] = cline_top_n_list
+    
+    for i, top_n in enumerate(cline_top_n_list):
+      if top_n > size:
+        continue
+      if i < len(cline_top_n_list) - 1:
+        # Sanity check.
+        assert cline_top_n_list[i + 1] <= top_n
+      compound_to_value_subset = {} 
+      for row in df_avg.itertuples():
+        smiles = row[1]
+        if smiles in compound_to_value:
+          compound_to_value_subset[smiles] = compound_to_value[smiles]        
+          if len(compound_to_value_subset) >= top_n:
+            #pdb.set_trace()
+            compound_to_value = compound_to_value_subset
+            cline_and_topn_to_value_list[(cline, top_n)] = list(compound_to_value.values())
+            break
+
+  cell_line_list = list(cell_lines_to_pairs)
   
   with open(out_file, 'w', newline='') as csvfile:
     fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'mean value', 
@@ -314,11 +344,14 @@ def calculate_mean_activity(pred_file, top_n_list = [100, 1000, 54000], exclude_
     out_line = {'Panel': panel}
     for cell_line in cell_line_list:
       out_line.update({'cell line': cell_line})
-      for i, top_n in enumerate(top_n_list):
-        cell_lines_to_values = dict_list[i]
-        if cell_line not in cell_lines_to_values:
+      if cell_line not in cline_to_topn_list:
+        continue
+      this_top_n_list = cline_to_topn_list[cell_line]
+      for top_n in this_top_n_list:
+        pair = (cell_line, top_n)
+        if pair not in cline_and_topn_to_value_list:
           continue
-        values = cell_lines_to_values[cell_line]
+        values = cline_and_topn_to_value_list[pair]
         values = np.asarray(values)
         out_line.update({'top_n': top_n, 'num_observation': len(values), 'mean value': np.mean(values),
           'standard deviation': np.std(values)})
@@ -354,55 +387,60 @@ def ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, sorted_values
   idcg = get_dcg(sorted_values_array)
   return dcg/idcg, dcg, idcg
 
-def calculate_ndcg(pred_file, top_n_list = [100, 1000, 54000], exclude_prot=[],
-  out_file='normalized_dcg_logGI50.csv'):
+def calculate_ndcg(pred_file, top_n_list = [12000, 1000, 100], exclude_prot=[],
+  out_file='normalized_dcg_logGI50.csv', threshold=2000):
   # Calculates the normalized discounted cumulative gain using the logGI50 value as the relevance score.
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
-  top_n_list = [len(df_avg)] + top_n_list
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
   dict_list = []
   panel = 'Prostate'
   panel_cline_and_compound_to_value = {}
-  triplet_set = set()
-  for row in df_nci60.itertuples():
-    triplet = (panel, row[2], row[3])
-    assert triplet not in triplet_set
-    triplet_set.add(triplet)
+  cell_line_list = []
+  compounds = df_avg.loc[:, 'smiles']
+  compounds_set = set(compounds)
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  # TODO: unfinished.
+  for row in df_nci60.itertuples():     
     if not re.search(panel, row[1], re.I):
       continue
     if np.isnan(row[7]):
-      continue    
+      continue  
+    smiles = row[3]
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]  
+    if row[2] not in set(cell_line_list):
+      cell_line_list.append(row[2])
+    triplet = (panel, row[2], smiles)
     panel_cline_and_compound_to_value[triplet] = row[7]  
   
   values_list = [v for v in panel_cline_and_compound_to_value.values()]
   values_array = np.asarray(values_list)
   sorted_values_array = np.sort(values_array)
 
-  for top_n in top_n_list:
-    df_avg_subset = df_avg.head(top_n)
-    compounds = df_avg_subset.loc[:, 'smiles']
-    compounds_set = set(compounds)
-    assert len(compounds) == len(compounds_set)        
-    cell_lines_to_ordered_compounds = {}
-    cell_lines_to_compound_set = {}
-    
-    for row in df_nci60.itertuples():    
-      if not re.search(panel, row[1], re.I):
-        continue
-      if np.isnan(row[7]):
-        continue            
-      if row[3] not in compounds_set:
-        continue
-      if row[2] not in cell_lines_to_compound_set:
-        cell_lines_to_compound_set[row[2]] = set()      
-      cell_lines_to_compound_set[row[2]].add(row[3])
+  for cline in cell_line_list:
+    for top_n in top_n_list:
+      
+      assert len(compounds) == len(compounds_set)        
+      cell_lines_to_ordered_compounds = {}
+      cell_lines_to_compound_set = {}
+      
+      for row in df_nci60.itertuples():    
+        if not re.search(panel, row[1], re.I):
+          continue
+        if np.isnan(row[7]):
+          continue            
+        smiles = row[3]
+        if smiles in invalid_to_canon_smiles:
+          smiles = invalid_to_canon_smiles[smiles]
+        if row[2] not in cell_lines_to_compound_set:
+          cell_lines_to_compound_set[row[2]] = set()      
+        cell_lines_to_compound_set[row[2]].add(smiles)
 
-    for key in cell_lines_to_compound_set:
-      ordered_cpd_list = [cpd for cpd in compounds if cpd in cell_lines_to_compound_set[key] ]
-      cell_lines_to_ordered_compounds[key] = ordered_cpd_list  
-    dict_list.append(cell_lines_to_ordered_compounds)  
+      for key in cell_lines_to_compound_set:
+        ordered_cpd_list = [cpd for cpd in compounds if cpd in cell_lines_to_compound_set[key] ]
+        cell_lines_to_ordered_compounds[key] = ordered_cpd_list  
+      dict_list.append(cell_lines_to_ordered_compounds)  
 
-  cell_line_list = list(dict_list[0])
   
   with open(out_file, 'w', newline='') as csvfile:
     fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'nDCG', 'DCG', 'iDCG']
