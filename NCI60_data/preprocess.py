@@ -533,8 +533,8 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
   invalid_to_canon_smiles = get_canonical_smiles_dict()
   use_all_panels = False
 
-  panels_to_clines = dict(zip(panels_for_comparison, [[]]*len(panels_for_comparison)))
-  base_panel_to_clines = {base_panel: []}
+  panels_to_clines = dict(zip(panels_for_comparison, [set()]*len(panels_for_comparison)))
+  base_panel_to_clines = {base_panel: set()}
   panel_and_cline_to_smiles = {}
   panel_cline_and_smiles_to_value = {}
   cell_line_pair_to_spearman_tuple = {}
@@ -550,6 +550,7 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
     assert smiles not in smiles_to_ar_score
     smiles_to_ar_score[smiles] = avg_score
 
+  time1 = time.time()
   for row in df_nci60.itertuples():
     if np.isnan(row[7]):
       continue
@@ -558,16 +559,16 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
     
     if this_panel == base_panel:
       if cell_line not in base_panel_to_clines[base_panel]:
-        base_panel_to_clines[base_panel].append(cell_line)
+        base_panel_to_clines[base_panel].add(cell_line)
     elif use_all_panels:
       if this_panel not in panels_to_clines:
         panels_to_clines[this_panel] = [] 
       if cell_line not in panels_to_clines[this_panel]:
-        panels_to_clines[this_panel].append(cell_line)
+        panels_to_clines[this_panel].add(cell_line)
     else:
       if this_panel in panels_to_clines:
         if cell_line not in panels_to_clines[this_panel]:
-          panels_to_clines[this_panel].append(cell_line)
+          panels_to_clines[this_panel].add(cell_line)
       else:
         continue
 
@@ -583,9 +584,11 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
     
     triplet = (this_panel, cell_line, smiles)
     #assert triplet not in panel_cline_and_smiles_to_value
-    panel_cline_and_smiles_to_value[triplet] = row[7]
+    panel_cline_and_smiles_to_value[triplet] = -1 * row[7]
 
+  time2 = time.time()
   print('len(smiles_to_exclude): ', len(smiles_to_exclude))
+  print('time used for iterating through NCI60 data: ', time2 - time1)
   for key in panel_and_cline_to_smiles:
     panel_and_cline_to_smiles[key] = [smiles for smiles in panel_and_cline_to_smiles[key]
       if smiles not in smiles_to_exclude]
@@ -594,6 +597,8 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
     pair = (base_panel, cell_line)
     base_smiles_list = panel_and_cline_to_smiles[pair]
     base_smiles_set = set(base_smiles_list)
+    if len(base_smiles_list) < threshold:
+      continue
     assert len(base_smiles_set & smiles_to_exclude) == 0
     base_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(base_panel, cell_line, 
       smiles)] for smiles in base_smiles_list])
@@ -613,14 +618,15 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
         intersecting_smiles_list = [smiles for smiles in base_smiles_list if smiles in 
           compare_smiles_set]
         if len(intersecting_smiles_list) < threshold:
-          continue   
-        compare_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(compare_panel,
-          compare_cline, smiles)] for smiles in compare_smiles_list])
-        compare_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in compare_smiles_list])
-        rho, pval = scipy.stats.spearmanr(compare_nci60_values, compare_ar_values)
-        cell_line_pair = (compare_cline, compare_cline)
-        assert cell_line_pair not in cell_line_pair_to_spearman_tuple
-        cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, len(compare_nci60_values))
+          continue  
+
+        cell_line_pair = (compare_cline, compare_cline) 
+        if cell_line_pair not in cell_line_pair_to_spearman_tuple:          
+          compare_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(compare_panel,
+            compare_cline, smiles)] for smiles in compare_smiles_list])
+          compare_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in compare_smiles_list])
+          rho, pval = scipy.stats.spearmanr(compare_nci60_values, compare_ar_values)       
+          cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, len(compare_nci60_values))
         cell_line_pair = (cell_line, compare_cline)
         intersecting_base_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(base_panel,
           cell_line, smiles)] for smiles in intersecting_smiles_list])
@@ -648,7 +654,9 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
     
     for cell_line in base_panel_to_clines[base_panel]:
       out_line = dict(zip(fieldnames, [None]*len(fieldnames)))
-      cell_line_pair = (cell_line, cell_line)      
+      cell_line_pair = (cell_line, cell_line) 
+      if cell_line_pair not in cell_line_pair_to_spearman_tuple:
+        continue     
       triplet = cell_line_pair_to_spearman_tuple[cell_line_pair]
       out_line.update({'Panel': base_panel, 'cell line': cell_line, 'num_observation': triplet[2],
         "Spearman's rho": triplet[0], 'p-value': triplet[1]})
@@ -663,6 +671,8 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
           if cell_line_pair not in cell_line_pair_to_spearman_tuple:
             continue
           compare_cline_triplet = cell_line_pair_to_spearman_tuple[cell_line_pair]
+          if (cell_line, compare_cline) not in cell_line_pair_to_spearman_tuple:
+            continue
           intersecting_base_triplet = cell_line_pair_to_spearman_tuple[(cell_line, compare_cline)]
           intersecting_compare_triplet = cell_line_pair_to_spearman_tuple[(compare_cline, cell_line)]          
           out_line.update({'cell line': compare_cline, 'num_observation': compare_cline_triplet[2], 
@@ -670,7 +680,8 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
             'num_intersection': intersecting_base_triplet[2], 'rho-intersection': intersecting_compare_triplet[0],
             'pvalue-intersection': intersecting_compare_triplet[1], 'rho-inter-base-cline':
             intersecting_base_triplet[0], 'pvalue-inter-base-cline': intersecting_base_triplet[1]})
-          writer.writerow(out_line)        
+          writer.writerow(out_line) 
+      writer.writerow(dict(zip(fieldnames, [None]*len(fieldnames))))       
 
 if __name__ == "__main__":
   #dataset = 'toxcast'
