@@ -17,6 +17,7 @@ import math
 import matplotlib.pyplot as plt
 import time
 import dcCustom
+import scipy
 from dcCustom.feat import Protein
 
 AR_list = [('toxcast', 'P10275'), ('toxcast', 'O97775'), ('toxcast', 'P15207')]
@@ -119,8 +120,7 @@ def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_l
     'tc_full_kinase': dcCustom.molnet.load_tc_full_kinases
   }  
 
-  tasks, _, _ = loading_functions[dataset_used](featurizer="ECFP", currdir="../")  
-  
+  tasks, _, _ = loading_functions[dataset_used](featurizer="ECFP", currdir="../")    
   prot_list = []
 
   for path in prot_desc_path_list:
@@ -435,8 +435,7 @@ def calculate_ndcg(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
       if top_n > size:
         continue
       if i < len(cline_top_n_list) - 1:
-        assert cline_top_n_list[i + 1] <= top_n           
-      
+        assert cline_top_n_list[i + 1] <= top_n         
       pair = (cline, top_n)   
       compound_list = []
       compound_to_value_subset = {}   
@@ -449,7 +448,6 @@ def calculate_ndcg(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
           if len(compound_to_value_subset) >= top_n:
             compound_to_value = compound_to_value_subset
             break
-
       cline_and_topn_to_ordered_compounds[pair] = compound_list      
   
   with open(out_file, 'w', newline='') as csvfile:
@@ -493,7 +491,6 @@ def plot_values(panel='Prostate', clines=['DU-145', 'PC-3'], plot_all_panels=Tru
     else:
       if not re.search(panel, row[1], re.I):
         continue
-
     if np.isnan(row[7]):
       continue
 
@@ -513,10 +510,8 @@ def plot_values(panel='Prostate', clines=['DU-145', 'PC-3'], plot_all_panels=Tru
       continue
     num_bins = 50
     fig, ax = plt.subplots()  
-    #n, bins, patches = ax.hist(interactions, num_bins, density=1)
     min_val = values.min    
     max_val = values.max
-    #ax.hist(values, num_bins, range=(np.floor(min_val), np.ceil(max_val)))
     ax.hist(values, num_bins)
     ax.set_xlabel('logGI50 values')
     ax.set_ylabel('Occurrence')
@@ -526,6 +521,156 @@ def plot_values(panel='Prostate', clines=['DU-145', 'PC-3'], plot_all_panels=Tru
     image_name = "plots/" + key[0] + '_' + cell_line + ".png"
     plt.savefig(image_name)
     plt.close()
+
+def get_intersection():
+  pass
+
+
+def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_comparison=['Breast'],
+  base_panel='Prostate', out_file='ar_logGI50_spearmanr.csv', threshold=1500):
+  df_avg = pd.read_csv(pred_file, header = 0, index_col=False)
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  use_all_panels = False
+
+  panels_to_clines = dict(zip(panels_for_comparison, [[]]*len(panels_for_comparison)))
+  base_panel_to_clines = {base_panel: []}
+  panel_and_cline_to_smiles = {}
+  panel_cline_and_smiles_to_value = {}
+  cell_line_pair_to_spearman_tuple = {}
+  smiles_to_ar_score = {}
+  smiles_to_exclude = set()
+
+  if len(panels_for_comparison) == 0:
+    use_all_panels = True
+
+  for row_pred in df_avg.itertuples():
+    smiles = row_pred[1]
+    avg_score = row_pred[4]
+    assert smiles not in smiles_to_ar_score
+    smiles_to_ar_score[smiles] = avg_score
+
+  for row in df_nci60.itertuples():
+    if np.isnan(row[7]):
+      continue
+    this_panel = row[1].rstrip()
+    cell_line = row[2].rstrip()
+    
+    if this_panel == base_panel:
+      if cell_line not in base_panel_to_clines[base_panel]:
+        base_panel_to_clines[base_panel].append(cell_line)
+    elif use_all_panels:
+      if this_panel not in panels_to_clines:
+        panels_to_clines[this_panel] = [] 
+      if cell_line not in panels_to_clines[this_panel]:
+        panels_to_clines[this_panel].append(cell_line)
+    else:
+      if this_panel in panels_to_clines:
+        if cell_line not in panels_to_clines[this_panel]:
+          panels_to_clines[this_panel].append(cell_line)
+      else:
+        continue
+
+    smiles = row[3]
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]
+    pair = (this_panel, cell_line)
+    if pair not in panel_and_cline_to_smiles:
+      panel_and_cline_to_smiles[pair] = []
+    if smiles in set(panel_and_cline_to_smiles[pair]):
+      smiles_to_exclude.add(smiles)
+    panel_and_cline_to_smiles[pair].append(smiles)
+    
+    triplet = (this_panel, cell_line, smiles)
+    #assert triplet not in panel_cline_and_smiles_to_value
+    panel_cline_and_smiles_to_value[triplet] = row[7]
+
+  print('len(smiles_to_exclude): ', len(smiles_to_exclude))
+  for key in panel_and_cline_to_smiles:
+    panel_and_cline_to_smiles[key] = [smiles for smiles in panel_and_cline_to_smiles[key]
+      if smiles not in smiles_to_exclude]
+
+  for cell_line in base_panel_to_clines[base_panel]:
+    pair = (base_panel, cell_line)
+    base_smiles_list = panel_and_cline_to_smiles[pair]
+    base_smiles_set = set(base_smiles_list)
+    assert len(base_smiles_set & smiles_to_exclude) == 0
+    base_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(base_panel, cell_line, 
+      smiles)] for smiles in base_smiles_list])
+    base_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in base_smiles_list])
+    rho, pval = scipy.stats.spearmanr(base_nci60_values, base_ar_values)
+    cell_line_pair = (cell_line, cell_line)
+    assert cell_line_pair not in cell_line_pair_to_spearman_tuple
+    cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, len(base_nci60_values))
+    for compare_panel in panels_to_clines:
+      if base_panel == compare_panel:
+        continue
+      for compare_cline in panels_to_clines[compare_panel]:     
+        this_pair = (compare_panel, compare_cline)
+        compare_smiles_list = panel_and_cline_to_smiles[this_pair]
+        compare_smiles_set = set(compare_smiles_list)
+        assert len(compare_smiles_set & smiles_to_exclude) == 0
+        intersecting_smiles_list = [smiles for smiles in base_smiles_list if smiles in 
+          compare_smiles_set]
+        if len(intersecting_smiles_list) < threshold:
+          continue   
+        compare_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(compare_panel,
+          compare_cline, smiles)] for smiles in compare_smiles_list])
+        compare_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in compare_smiles_list])
+        rho, pval = scipy.stats.spearmanr(compare_nci60_values, compare_ar_values)
+        cell_line_pair = (compare_cline, compare_cline)
+        assert cell_line_pair not in cell_line_pair_to_spearman_tuple
+        cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, len(compare_nci60_values))
+        cell_line_pair = (cell_line, compare_cline)
+        intersecting_base_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(base_panel,
+          cell_line, smiles)] for smiles in intersecting_smiles_list])
+        intersecting_base_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in 
+          intersecting_smiles_list])
+        rho, pval = scipy.stats.spearmanr(intersecting_base_nci60_values, intersecting_base_ar_values)
+        cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, 
+          len(intersecting_base_nci60_values))
+        cell_line_pair = (compare_cline, cell_line)
+        intersecting_compare_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(compare_panel,
+          compare_cline, smiles)] for smiles in intersecting_smiles_list])
+        intersecting_compare_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in 
+          intersecting_smiles_list])
+        rho, pval = scipy.stats.spearmanr(intersecting_compare_nci60_values, 
+          intersecting_compare_ar_values)
+        cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, 
+          len(intersecting_compare_nci60_values))
+
+  with open(out_file, 'w', newline='') as csvfile:
+    fieldnames = ['Panel', 'cell line', 'num_observation', "Spearman's rho", 'p-value',
+      'num_intersection', 'rho-intersection', 'pvalue-intersection', 'rho-inter-base-cline',
+      'pvalue-inter-base-cline', 'base cell line']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    
+    for cell_line in base_panel_to_clines[base_panel]:
+      out_line = dict(zip(fieldnames, [None]*len(fieldnames)))
+      cell_line_pair = (cell_line, cell_line)      
+      triplet = cell_line_pair_to_spearman_tuple[cell_line_pair]
+      out_line.update({'Panel': base_panel, 'cell line': cell_line, 'num_observation': triplet[2],
+        "Spearman's rho": triplet[0], 'p-value': triplet[1]})
+      writer.writerow(out_line)
+      out_line.update({'base cell line': cell_line})
+      for compare_panel in panels_to_clines:
+        if base_panel == compare_panel:
+          continue
+        out_line['Panel'] = compare_panel
+        for compare_cline in panels_to_clines[compare_panel]:
+          cell_line_pair = (compare_cline, compare_cline)
+          if cell_line_pair not in cell_line_pair_to_spearman_tuple:
+            continue
+          compare_cline_triplet = cell_line_pair_to_spearman_tuple[cell_line_pair]
+          intersecting_base_triplet = cell_line_pair_to_spearman_tuple[(cell_line, compare_cline)]
+          intersecting_compare_triplet = cell_line_pair_to_spearman_tuple[(compare_cline, cell_line)]          
+          out_line.update({'cell line': compare_cline, 'num_observation': compare_cline_triplet[2], 
+            "Spearman's rho": compare_cline_triplet[0], 'p-value': compare_cline_triplet[1], 
+            'num_intersection': intersecting_base_triplet[2], 'rho-intersection': intersecting_compare_triplet[0],
+            'pvalue-intersection': intersecting_compare_triplet[1], 'rho-inter-base-cline':
+            intersecting_base_triplet[0], 'pvalue-inter-base-cline': intersecting_base_triplet[1]})
+          writer.writerow(out_line)        
 
 if __name__ == "__main__":
   #dataset = 'toxcast'
@@ -540,6 +685,8 @@ if __name__ == "__main__":
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
   #calculate_mean_activity('avg_ar_tc.csv')
-  calculate_ndcg('avg_ar_tc.csv')
+  #calculate_ndcg('avg_ar_tc.csv')
   #plot_values()
+  #get_intersection()
+  calc_spearmanr('avg_ar_tc.csv')
   
