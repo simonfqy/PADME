@@ -26,7 +26,8 @@ ER_list = [('toxcast', 'P03372'), ('toxcast', 'P19785'), ('toxcast', 'P49884'),
   ('toxcast', 'Q92731')]
 ER_list_s = [('toxcast', 'P03372')]
 AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
-AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+#AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+AR_antagonist_score_coef = [1.] + [0.]*8
 
 PROT_desc_path_list = ['../davis_data/prot_desc.csv', '../metz_data/prot_desc.csv', 
     '../KIBA_data/prot_desc.csv', '../full_toxcast/prot_desc.csv']
@@ -292,7 +293,7 @@ def get_invalid_smiles(out_file='invalid_smiles.csv'):
       writer.writerow(out_line)
   err_log.close()
 
-def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_prot=[], direction=True):
+def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc_6620.csv', exclude_prot=[], direction=True):
   assert isinstance(input_files_list, list)
   assert len(input_files_list) > 0
   record_dict_list = []
@@ -335,7 +336,7 @@ def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_p
   
   
 def calculate_mean_activity(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
-  out_file='mean_logGI50.csv', threshold=2000):
+  out_file='mean_logGI50_6620.csv', threshold=2000):
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
   panel = 'Prostate'
@@ -440,7 +441,7 @@ def ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, sorted_values
   return dcg/idcg, dcg, idcg
 
 def calculate_ndcg(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
-  out_file='normalized_dcg_logGI50.csv', threshold=2000):
+  out_file='normalized_dcg_logGI50_6620.csv', threshold=2000):
   # Calculates the normalized discounted cumulative gain using the logGI50 value as the relevance score.
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)  
@@ -579,7 +580,7 @@ def get_intersection():
 
 
 def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_comparison=['Breast'],
-  base_panel='Prostate', out_file='ar_logGI50_spearmanr.csv', threshold=1500):
+  base_panel='Prostate', out_file='ar_logGI50_spearmanr_6620.csv', threshold=1500):
   df_avg = pd.read_csv(pred_file, header = 0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
   invalid_to_canon_smiles = get_canonical_smiles_dict()
@@ -613,7 +614,7 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
         base_panel_to_clines[base_panel].add(cell_line)
     elif use_all_panels:
       if this_panel not in panels_to_clines:
-        panels_to_clines[this_panel] = [] 
+        panels_to_clines[this_panel] = set() 
       if cell_line not in panels_to_clines[this_panel]:
         panels_to_clines[this_panel].add(cell_line)
     else:
@@ -736,17 +737,17 @@ if __name__ == "__main__":
   #dataset = 'kiba'
   # produce_dataset(dataset_used=dataset, prot_desc_path_list=['../full_toxcast/prot_desc.csv'], 
   #   get_all_compounds=True, take_mol_subset=False, prot_pairs_to_choose=AR_list_s + ER_list_s)
-  produce_dataset(dataset_used=dataset, output_prefix="all_prot_intxn")
+  #produce_dataset(dataset_used=dataset, output_prefix="all_prot_intxn")
   # synthesize_ranking('preds_arer_kiba_graphconv.csv', 'ordered_arer_kiba_gc.csv', weigh_by_occurrence=True,
   #   AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
-  # synthesize_ranking('preds_tc_graphconv.csv', 'synthesized_values_gc.csv', 
-  #   direction=True, dataset_used=dataset)
+  # synthesize_ranking('preds_arer_tc_ecfp.csv', 'ordered_arer_tc_ecfp.csv', 
+  #   AR_toxcast_codes=AR_toxcast_codes, direction=True, dataset_used=dataset)
   #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
-  #calculate_mean_activity('avg_ar_tc.csv')
-  #calculate_ndcg('avg_ar_tc.csv')
+  # calculate_mean_activity('avg_ar_tc_6620.csv')
+  # calculate_ndcg('avg_ar_tc_6620.csv')
   #plot_values()
   #get_intersection()
-  #calc_spearmanr('avg_ar_tc.csv')
+  calc_spearmanr('avg_ar_tc_6620.csv', panels_for_comparison=[])
   
