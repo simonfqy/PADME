@@ -76,6 +76,65 @@ def load_prot_dict(protein_list, prot_desc_path, sequence_field,
     protein = Protein(row[0], source, (phosphorylated, sequence))
     if protein not in set(protein_list):
       protein_list.append(protein)  
+      
+def select_mol_list(dataframe, selected_mol_set, selected_mol_list, 
+  invalid_to_canon_smiles={}, take_mol_subset=True, mols_to_choose=2000, 
+  panel="Prostate", group_by_celllines=True, cellline_threshold=500, mols_per_cline=500):
+  
+  if not group_by_celllines:
+    GIarray = np.asarray(dataframe.iloc[:, 5])
+    sorted_indices = np.argsort(GIarray)
+    for i in sorted_indices:
+      smiles = molList[i]
+      if smiles in invalid_to_canon_smiles:
+        smiles = invalid_to_canon_smiles[smiles]
+      if smiles not in selected_mol_set:
+        selected_mol_set.add(smiles)
+        selected_mol_list.append(smiles)
+        if take_mol_subset and len(selected_mol_set) >= mols_to_choose:
+          break      
+  else:
+    cell_line_to_compounds_list = {}
+    cell_line_to_values_list = {}
+    cell_line_to_invalid_smiles = {}
+    for row in dataframe.itertuples():      
+      if not re.search(panel, row[1], re.I):
+        continue
+      if np.isnan(row[6]):
+        continue      
+      cell_line = row[2]   
+      smiles = row[0]
+      if smiles in invalid_to_canon_smiles:
+        smiles = invalid_to_canon_smiles[smiles]
+      if cell_line not in cell_line_to_compounds_list:
+        cell_line_to_compounds_list[cell_line] = []
+        cell_line_to_values_list[cell_line] = []
+        cell_line_to_invalid_smiles[cell_line] = set()
+      if smiles in set(cell_line_to_compounds_list[cell_line]):
+        cell_line_to_invalid_smiles[cell_line].add(smiles)        
+      cell_line_to_compounds_list[cell_line].append(smiles)
+      cell_line_to_values_list[cell_line].append(row[6])
+    
+    for cell_line in cell_line_to_compounds_list:
+      compound_list = cell_line_to_compounds_list[cell_line]      
+      values_list = cell_line_to_values_list[cell_line]
+      smiles_to_exclude = cell_line_to_invalid_smiles[cell_line]
+      values_list = [val for (cpd, val) in zip(compound_list, values_list
+        ) if cpd not in smiles_to_exclude]
+      compound_list = [cpd for cpd in compound_list if cpd not in smiles_to_exclude]
+      pdb.set_trace()
+      if len(values_list) < cellline_threshold:
+        continue
+      value_array = np.asarray(values_list)
+      sorted_indices = np.argsort(value_array)
+      for i in range(len(sorted_indices)):
+        if i >= mols_per_cline:
+          continue
+        smiles = compound_list[sorted_indices[i]]
+        if smiles not in selected_mol_set:
+          selected_mol_set.add(smiles) 
+          selected_mol_list.append(smiles)     
+      
     
 def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_list,
   get_all_compounds=False, take_mol_subset=True, mols_to_choose=2000, prot_pairs_to_choose=[], 
@@ -91,17 +150,8 @@ def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_l
   selected_mol_set = set()
   selected_mol_list = []
   
-  GIarray = np.asarray(df.iloc[:, 5])
-  sorted_indices = np.argsort(GIarray)
-  for i in sorted_indices:
-    smiles = molList[i]
-    if smiles in invalid_to_canon_smiles:
-      smiles = invalid_to_canon_smiles[smiles]
-    if smiles not in selected_mol_set:
-      selected_mol_set.add(smiles)
-      selected_mol_list.append(smiles)
-      if take_mol_subset and len(selected_mol_set) >= mols_to_choose:
-        break
+  select_mol_list(df, selected_mol_set, selected_mol_list, 
+    invalid_to_canon_smiles=invalid_to_canon_smiles, mols_to_choose=mols_to_choose)
       
   if get_all_compounds:
     file_name_list = ['../davis_data/restructured.csv', '../metz_data/restructured_unique.csv',
@@ -111,6 +161,8 @@ def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_l
       if smiles not in selected_mol_set:
         selected_mol_set.add(smiles)
         selected_mol_list.append(smiles)
+  assert len(selected_mol_set) == len(selected_mol_list)
+  print("len(selected_mol_list): ", len(selected_mol_list))
   
   loading_functions = {
     'kiba': dcCustom.molnet.load_kiba,
@@ -543,7 +595,6 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
 
   if len(panels_for_comparison) == 0:
     use_all_panels = True
-
   for row_pred in df_avg.itertuples():
     smiles = row_pred[1]
     avg_score = row_pred[4]
@@ -583,7 +634,6 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
     panel_and_cline_to_smiles[pair].append(smiles)
     
     triplet = (this_panel, cell_line, smiles)
-    #assert triplet not in panel_cline_and_smiles_to_value
     panel_cline_and_smiles_to_value[triplet] = -1 * row[7]
 
   time2 = time.time()
@@ -630,18 +680,16 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
         cell_line_pair = (cell_line, compare_cline)
         intersecting_base_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(base_panel,
           cell_line, smiles)] for smiles in intersecting_smiles_list])
-        intersecting_base_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in 
+        intersecting_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in 
           intersecting_smiles_list])
-        rho, pval = scipy.stats.spearmanr(intersecting_base_nci60_values, intersecting_base_ar_values)
+        rho, pval = scipy.stats.spearmanr(intersecting_base_nci60_values, intersecting_ar_values)
         cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, 
           len(intersecting_base_nci60_values))
         cell_line_pair = (compare_cline, cell_line)
         intersecting_compare_nci60_values = np.asarray([panel_cline_and_smiles_to_value[(compare_panel,
           compare_cline, smiles)] for smiles in intersecting_smiles_list])
-        intersecting_compare_ar_values = np.asarray([smiles_to_ar_score[smiles] for smiles in 
-          intersecting_smiles_list])
         rho, pval = scipy.stats.spearmanr(intersecting_compare_nci60_values, 
-          intersecting_compare_ar_values)
+          intersecting_ar_values)
         cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, 
           len(intersecting_compare_nci60_values))
 
@@ -684,10 +732,11 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
       writer.writerow(dict(zip(fieldnames, [None]*len(fieldnames))))       
 
 if __name__ == "__main__":
-  #dataset = 'toxcast'
-  dataset = 'kiba'
+  dataset = 'toxcast'
+  #dataset = 'kiba'
   # produce_dataset(dataset_used=dataset, prot_desc_path_list=['../full_toxcast/prot_desc.csv'], 
   #   get_all_compounds=True, take_mol_subset=False, prot_pairs_to_choose=AR_list_s + ER_list_s)
+  produce_dataset(dataset_used=dataset, output_prefix="all_prot_intxn")
   # synthesize_ranking('preds_arer_kiba_graphconv.csv', 'ordered_arer_kiba_gc.csv', weigh_by_occurrence=True,
   #   AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
   # synthesize_ranking('preds_tc_graphconv.csv', 'synthesized_values_gc.csv', 
@@ -699,5 +748,5 @@ if __name__ == "__main__":
   #calculate_ndcg('avg_ar_tc.csv')
   #plot_values()
   #get_intersection()
-  calc_spearmanr('avg_ar_tc.csv')
+  #calc_spearmanr('avg_ar_tc.csv')
   
