@@ -13,8 +13,8 @@ You must first have `DeepChem` installed for `PADME` to work correctly.
 
 Other folders like `oldCode` and `phase1` are not related to PADME, they are for the first phase of my project. You can neglect them.
 
-# Build with
+# Built with
 Python - Process data and used for deep learning
 
 # Author
-simonfqy
+simonfqy (Qingyuan Feng)
