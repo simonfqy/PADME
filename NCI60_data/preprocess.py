@@ -293,7 +293,7 @@ def get_invalid_smiles(out_file='invalid_smiles.csv'):
       writer.writerow(out_line)
   err_log.close()
 
-def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc_6620.csv', exclude_prot=[], direction=True):
+def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_prot=[], direction=True):
   assert isinstance(input_files_list, list)
   assert len(input_files_list) > 0
   record_dict_list = []
@@ -336,7 +336,7 @@ def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc_6620.csv', excl
   
   
 def calculate_mean_activity(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
-  out_file='mean_logGI50_6620.csv', threshold=2000):
+  out_file='mean_logGI50.csv', threshold=2000):
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
   panel = 'Prostate'
@@ -441,7 +441,7 @@ def ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, sorted_values
   return dcg/idcg, dcg, idcg
 
 def calculate_ndcg(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
-  out_file='normalized_dcg_logGI50_6620.csv', threshold=2000):
+  out_file='normalized_dcg_logGI50.csv', threshold=2000):
   # Calculates the normalized discounted cumulative gain using the logGI50 value as the relevance score.
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)  
@@ -574,76 +574,12 @@ def plot_values(panel='Prostate', clines=['DU-145', 'PC-3'], plot_all_panels=Tru
     image_name = "plots/" + key[0] + '_' + cell_line + ".png"
     plt.savefig(image_name)
     plt.close()
+    
+def get_spearman_tuple(base_panel_to_clines, panels_to_clines, panel_and_cline_to_smiles, 
+  panel_cline_and_smiles_to_value, smiles_to_ar_score, base_panel='Prostate', 
+  threshold = 0, smiles_to_exclude=set()):
 
-def get_intersection():
-  pass
-
-
-def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_comparison=['Breast'],
-  base_panel='Prostate', out_file='ar_logGI50_spearmanr_6620.csv', threshold=1500):
-  df_avg = pd.read_csv(pred_file, header = 0, index_col=False)
-  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
-  invalid_to_canon_smiles = get_canonical_smiles_dict()
-  use_all_panels = False
-
-  panels_to_clines = dict(zip(panels_for_comparison, [set()]*len(panels_for_comparison)))
-  base_panel_to_clines = {base_panel: set()}
-  panel_and_cline_to_smiles = {}
-  panel_cline_and_smiles_to_value = {}
   cell_line_pair_to_spearman_tuple = {}
-  smiles_to_ar_score = {}
-  smiles_to_exclude = set()
-
-  if len(panels_for_comparison) == 0:
-    use_all_panels = True
-  for row_pred in df_avg.itertuples():
-    smiles = row_pred[1]
-    avg_score = row_pred[4]
-    assert smiles not in smiles_to_ar_score
-    smiles_to_ar_score[smiles] = avg_score
-
-  time1 = time.time()
-  for row in df_nci60.itertuples():
-    if np.isnan(row[7]):
-      continue
-    this_panel = row[1].rstrip()
-    cell_line = row[2].rstrip()
-    
-    if this_panel == base_panel:
-      if cell_line not in base_panel_to_clines[base_panel]:
-        base_panel_to_clines[base_panel].add(cell_line)
-    elif use_all_panels:
-      if this_panel not in panels_to_clines:
-        panels_to_clines[this_panel] = set() 
-      if cell_line not in panels_to_clines[this_panel]:
-        panels_to_clines[this_panel].add(cell_line)
-    else:
-      if this_panel in panels_to_clines:
-        if cell_line not in panels_to_clines[this_panel]:
-          panels_to_clines[this_panel].add(cell_line)
-      else:
-        continue
-
-    smiles = row[3]
-    if smiles in invalid_to_canon_smiles:
-      smiles = invalid_to_canon_smiles[smiles]
-    pair = (this_panel, cell_line)
-    if pair not in panel_and_cline_to_smiles:
-      panel_and_cline_to_smiles[pair] = []
-    if smiles in set(panel_and_cline_to_smiles[pair]):
-      smiles_to_exclude.add(smiles)
-    panel_and_cline_to_smiles[pair].append(smiles)
-    
-    triplet = (this_panel, cell_line, smiles)
-    panel_cline_and_smiles_to_value[triplet] = -1 * row[7]
-
-  time2 = time.time()
-  print('len(smiles_to_exclude): ', len(smiles_to_exclude))
-  print('time used for iterating through NCI60 data: ', time2 - time1)
-  for key in panel_and_cline_to_smiles:
-    panel_and_cline_to_smiles[key] = [smiles for smiles in panel_and_cline_to_smiles[key]
-      if smiles not in smiles_to_exclude]
-
   for cell_line in base_panel_to_clines[base_panel]:
     pair = (base_panel, cell_line)
     base_smiles_list = panel_and_cline_to_smiles[pair]
@@ -693,6 +629,142 @@ def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_com
           intersecting_ar_values)
         cell_line_pair_to_spearman_tuple[cell_line_pair] = (rho, pval, 
           len(intersecting_compare_nci60_values))
+  return cell_line_pair_to_spearman_tuple
+
+def get_selective_compounds(base_cell_line='DU-145', out_file='ordered_compounds.csv'):
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  panel_and_cline_to_smiles = {}
+  base_cline_compound_list = []
+  base_cline_smiles_to_value = {}
+  smiles_to_activity_list = {}
+  smiles_to_exclude = set()
+  for row in df_nci60.itertuples():
+    if np.isnan(row[7]):
+      continue
+    this_panel = row[1].rstrip()
+    cell_line = row[2].rstrip()      
+    smiles = row[3]
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]
+    pair = (this_panel, cell_line)
+    if pair not in panel_and_cline_to_smiles:
+      panel_and_cline_to_smiles[pair] = set()
+    if smiles in panel_and_cline_to_smiles[pair]:
+      smiles_to_exclude.add(smiles)
+    panel_and_cline_to_smiles[pair].add(smiles)
+    
+    active = row[4]
+    if cell_line == base_cell_line and active == 1:
+      base_cline_compound_list.append(smiles)
+      base_cline_smiles_to_value[smiles] = row[7]
+    if smiles not in smiles_to_activity_list:
+      smiles_to_activity_list[smiles] = []
+    if cell_line != base_cell_line:
+      smiles_to_activity_list[smiles].append(active)
+      
+  base_cline_compound_list = [smiles for smiles in base_cline_compound_list if smiles not 
+    in smiles_to_exclude]  
+  score_list = []
+  compound_to_activity_ratio_triplet = {}
+  for smiles in base_cline_compound_list:
+    activity_list = smiles_to_activity_list[smiles]
+    ratio = sum(activity_list)/len(activity_list)
+    #score = ratio + base_cline_smiles_to_value[smiles]
+    score_list.append(ratio)
+    assert smiles not in compound_to_activity_ratio_triplet
+    compound_to_activity_ratio_triplet[smiles] = (sum(activity_list), len(activity_list), ratio)
+    
+  score_array = np.asarray(score_list)
+  sorted_indices = np.argsort(score_array)
+  
+  with open(out_file, 'w', newline='') as csvfile:
+    fieldnames = ['smiles', 'DU-145 logGI50', 'active_ratio', 'total active', 'total occurrence']
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writeheader()  
+    for ind in sorted_indices:
+      smiles = base_cline_compound_list[ind]
+      logGI50 = base_cline_smiles_to_value[smiles]
+      triplet = compound_to_activity_ratio_triplet[smiles]
+      out_line = {'smiles': smiles, 'DU-145 logGI50': logGI50, 'active_ratio': triplet[2],
+        'total active': triplet[0], 'total occurrence': triplet[1]}
+      writer.writerow(out_line)
+  
+def calc_spearmanr(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_comparison=['Breast'],
+  base_panel='Prostate', out_file='ar_logGI50_spearmanr.csv', threshold=1500, select_subset=False,
+  num_compounds=100, compound_file='ordered_compounds.csv'):
+  
+  df_avg = pd.read_csv(pred_file, header = 0, index_col=False)
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  if select_subset:
+    df_top_compounds = pd.read_csv(compound_file, header=0, index_col=False)
+    df_top_compounds = df_top_compounds.head(num_compounds)
+    smiles_subset = set(df_top_compounds.loc[:, 'smiles'])
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  use_all_panels = False
+
+  panels_to_clines = dict(zip(panels_for_comparison, [set()]*len(panels_for_comparison)))
+  base_panel_to_clines = {base_panel: set()}
+  panel_and_cline_to_smiles = {}
+  panel_cline_and_smiles_to_value = {}
+  smiles_to_ar_score = {}
+  smiles_to_exclude = set()
+
+  if len(panels_for_comparison) == 0:
+    use_all_panels = True
+  for row_pred in df_avg.itertuples():
+    smiles = row_pred[1]
+    avg_score = row_pred[4]
+    assert smiles not in smiles_to_ar_score
+    smiles_to_ar_score[smiles] = avg_score
+
+  time1 = time.time()
+  for row in df_nci60.itertuples():
+    if np.isnan(row[7]):
+      continue
+    smiles = row[3]
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]
+    if select_subset and smiles not in smiles_subset:
+      continue
+    this_panel = row[1].rstrip()
+    cell_line = row[2].rstrip()
+    
+    if this_panel == base_panel:
+      if cell_line not in base_panel_to_clines[base_panel]:
+        base_panel_to_clines[base_panel].add(cell_line)
+    elif use_all_panels:
+      if this_panel not in panels_to_clines:
+        panels_to_clines[this_panel] = set() 
+      if cell_line not in panels_to_clines[this_panel]:
+        panels_to_clines[this_panel].add(cell_line)
+    else:
+      if this_panel in panels_to_clines:
+        if cell_line not in panels_to_clines[this_panel]:
+          panels_to_clines[this_panel].add(cell_line)
+      else:
+        continue
+    
+    pair = (this_panel, cell_line)
+    if pair not in panel_and_cline_to_smiles:
+      panel_and_cline_to_smiles[pair] = []
+    if smiles in set(panel_and_cline_to_smiles[pair]):
+      smiles_to_exclude.add(smiles)
+    panel_and_cline_to_smiles[pair].append(smiles)
+    
+    triplet = (this_panel, cell_line, smiles)
+    panel_cline_and_smiles_to_value[triplet] = -1 * row[7]
+
+  time2 = time.time()
+  print('len(smiles_to_exclude): ', len(smiles_to_exclude))
+  print('time used for iterating through NCI60 data: ', time2 - time1)
+  for key in panel_and_cline_to_smiles:
+    panel_and_cline_to_smiles[key] = [smiles for smiles in panel_and_cline_to_smiles[key]
+      if smiles not in smiles_to_exclude]
+  
+  cell_line_pair_to_spearman_tuple = get_spearman_tuple(base_panel_to_clines, panels_to_clines, 
+    panel_and_cline_to_smiles, panel_cline_and_smiles_to_value, smiles_to_ar_score, 
+    base_panel=base_panel, threshold = threshold, smiles_to_exclude=smiles_to_exclude)
 
   with open(out_file, 'w', newline='') as csvfile:
     fieldnames = ['Panel', 'cell line', 'num_observation', "Spearman's rho", 'p-value',
@@ -745,9 +817,10 @@ if __name__ == "__main__":
   #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
-  # calculate_mean_activity('avg_ar_tc_6620.csv')
-  # calculate_ndcg('avg_ar_tc_6620.csv')
+  # calculate_mean_activity('avg_ar_tc.csv')
+  # calculate_ndcg('avg_ar_tc.csv')
   #plot_values()
   #get_intersection()
-  calc_spearmanr('avg_ar_tc_6620.csv', panels_for_comparison=[])
+  #get_selective_compounds()
+  calc_spearmanr('avg_ar_tc.csv', panels_for_comparison=[], threshold=30, select_subset=True)
   
