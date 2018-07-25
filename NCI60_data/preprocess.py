@@ -525,6 +525,90 @@ def calculate_ndcg(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10], excl
           'nDCG': normalized_dcg, 'DCG': dcg, 'iDCG': idcg})
         writer.writerow(out_line)
 
+def calc_subsets_cindex(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10], exclude_prot=[],
+  out_file='subset_cindex_logGI50.csv', threshold=2000):
+  # Calculates the normalized discounted cumulative gain using the logGI50 value as the relevance score.
+  df_avg = pd.read_csv(pred_file, header=0, index_col=False)
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)  
+  panel = 'Prostate'
+  cline_and_topn_to_ordered_compounds = {}
+  panel_cline_and_compound_to_value = {}
+  cell_line_list = []
+  cline_to_topn_list = {}
+  compounds = df_avg.loc[:, 'smiles']
+  compounds_set = set(compounds)
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+
+  for row in df_nci60.itertuples():     
+    if not re.search(panel, row[1], re.I):
+      continue
+    if np.isnan(row[7]):
+      continue  
+    smiles = row[3]
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]  
+    if row[2] not in set(cell_line_list):
+      cell_line_list.append(row[2])
+    triplet = (panel, row[2], smiles)
+    panel_cline_and_compound_to_value[triplet] = row[7]  
+  
+  values_list = [v for v in panel_cline_and_compound_to_value.values()]
+  values_array = np.asarray(values_list)
+  sorted_values_array = np.sort(values_array)
+
+  for cline in cell_line_list:
+    compound_to_value = {}
+    for triplet in panel_cline_and_compound_to_value:
+      if triplet[1] == cline:
+        # Make sure that no duplicate smiles.
+        assert triplet[2] not in compound_to_value
+        compound_to_value[triplet[2]] = panel_cline_and_compound_to_value[triplet]
+    size = len(compound_to_value)
+    if size < threshold:
+      continue
+    cline_top_n_list = [size] + top_n_list
+    cline_to_topn_list[cline] = cline_top_n_list
+
+    for i, top_n in enumerate(cline_top_n_list):
+      if top_n > size:
+        continue
+      if i < len(cline_top_n_list) - 1:
+        assert cline_top_n_list[i + 1] <= top_n         
+      pair = (cline, top_n)   
+      compound_list = []
+      compound_to_value_subset = {}   
+
+      for row_pred in df_avg.itertuples():
+        smiles = row_pred[1]
+        if smiles in compound_to_value:
+          compound_to_value_subset[smiles] = compound_to_value[smiles]
+          compound_list.append(smiles)
+          if len(compound_to_value_subset) >= top_n:
+            compound_to_value = compound_to_value_subset
+            break
+      cline_and_topn_to_ordered_compounds[pair] = compound_list      
+  
+  with open(out_file, 'w', newline='') as csvfile:
+    fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'nDCG', 'DCG', 'iDCG']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    out_line = {'Panel': panel}
+    for cell_line in cell_line_list:
+      out_line.update({'cell line': cell_line})
+      if cell_line not in cline_to_topn_list:
+        continue
+      cline_top_n_list = cline_to_topn_list[cell_line]
+      for top_n in cline_top_n_list:
+        pair = (cell_line, top_n)
+        if pair not in cline_and_topn_to_ordered_compounds:
+          continue
+        ordered_cpd_list = cline_and_topn_to_ordered_compounds[pair]
+        normalized_dcg, dcg, idcg = ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, 
+          sorted_values_array, cell_line=cell_line, panel=panel)
+        out_line.update({'top_n': top_n, 'num_observation': len(ordered_cpd_list), 
+          'nDCG': normalized_dcg, 'DCG': dcg, 'iDCG': idcg})
+        writer.writerow(out_line)
+
 def plot_values(panel='Prostate', clines=['DU-145', 'PC-3'], plot_all_panels=True, threshold=100):  
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
   panel_list = []
@@ -859,7 +943,7 @@ def get_cindex_tuple(base_panel_to_clines, panels_to_clines, panel_and_cline_to_
   return cell_line_pair_to_cindex_tuple       
 
 def calc_cindex(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_comparison=['Breast'],
-  base_panel='Prostate', out_file='ar_logGI50_cindex.csv', threshold=1500, select_subset=False,
+  base_panel='Prostate', out_file='ar_logGI50_cindex_all.csv', threshold=1500, select_subset=False,
   num_compounds=250, compound_file='ordered_compounds.csv'):
   
   df_avg = pd.read_csv(pred_file, header = 0, index_col=False)
@@ -985,10 +1069,11 @@ if __name__ == "__main__":
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
   # calculate_mean_activity('avg_ar_tc.csv')
   #calculate_ndcg('avg_ar_tc.csv')
+  calc_subsets_cindex('avg_ar_tc.csv')
   #plot_values()
   #get_intersection()
   # get_selective_compounds()
   # calc_spearmanr('avg_ar_tc.csv', panels_for_comparison=[], threshold=30, select_subset=True,
   #   compound_file='ordered_compounds_2.csv')
-  calc_cindex('avg_ar_tc.csv', panels_for_comparison=['Breast'], compound_file='ordered_compounds.csv')
+  #calc_cindex('avg_ar_tc.csv', panels_for_comparison=[], compound_file='ordered_compounds.csv')
   
