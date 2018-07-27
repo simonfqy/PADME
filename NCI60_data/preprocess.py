@@ -526,8 +526,8 @@ def calculate_ndcg(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10], excl
         writer.writerow(out_line)
 
 def calc_subsets_cindex(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10], exclude_prot=[],
-  out_file='subset_cindex_logGI50.csv', threshold=2000):
-  # Calculates the normalized discounted cumulative gain using the logGI50 value as the relevance score.
+  out_file='subset_cindex_logGI50.csv', threshold=1500):
+  # Calculate the cindex on the ranking of AR score using logGI50 as ground truth.
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)  
   panel = 'Prostate'
@@ -535,8 +535,7 @@ def calc_subsets_cindex(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10],
   panel_cline_and_compound_to_value = {}
   cell_line_list = []
   cline_to_topn_list = {}
-  compounds = df_avg.loc[:, 'smiles']
-  compounds_set = set(compounds)
+  smiles_to_ar_score = {}
   invalid_to_canon_smiles = get_canonical_smiles_dict()
 
   for row in df_nci60.itertuples():     
@@ -550,11 +549,13 @@ def calc_subsets_cindex(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10],
     if row[2] not in set(cell_line_list):
       cell_line_list.append(row[2])
     triplet = (panel, row[2], smiles)
-    panel_cline_and_compound_to_value[triplet] = row[7]  
+    panel_cline_and_compound_to_value[triplet] = -1 * row[7]  
   
-  values_list = [v for v in panel_cline_and_compound_to_value.values()]
-  values_array = np.asarray(values_list)
-  sorted_values_array = np.sort(values_array)
+  for row_pred in df_avg.itertuples():
+    smiles = row_pred[1]
+    avg_score = row_pred[4]
+    assert smiles not in smiles_to_ar_score
+    smiles_to_ar_score[smiles] = avg_score
 
   for cline in cell_line_list:
     compound_to_value = {}
@@ -589,7 +590,7 @@ def calc_subsets_cindex(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10],
       cline_and_topn_to_ordered_compounds[pair] = compound_list      
   
   with open(out_file, 'w', newline='') as csvfile:
-    fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'nDCG', 'DCG', 'iDCG']
+    fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'cindex']
     writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
     writer.writeheader()
     out_line = {'Panel': panel}
@@ -603,10 +604,15 @@ def calc_subsets_cindex(pred_file, top_n_list = [15000, 1000, 500, 100, 50, 10],
         if pair not in cline_and_topn_to_ordered_compounds:
           continue
         ordered_cpd_list = cline_and_topn_to_ordered_compounds[pair]
-        normalized_dcg, dcg, idcg = ndcg_tool(ordered_cpd_list, panel_cline_and_compound_to_value, 
-          sorted_values_array, cell_line=cell_line, panel=panel)
+        
+        gi_list = [panel_cline_and_compound_to_value[(panel, cell_line, smiles)] for smiles in 
+          ordered_cpd_list]
+        gi_array = np.asarray(gi_list)
+        ar_list = [smiles_to_ar_score[smiles] for smiles in ordered_cpd_list]
+        ar_array = np.asarray(ar_list)
+        cindex = concordance_index(gi_array, ar_array)
         out_line.update({'top_n': top_n, 'num_observation': len(ordered_cpd_list), 
-          'nDCG': normalized_dcg, 'DCG': dcg, 'iDCG': idcg})
+          'cindex': cindex})
         writer.writerow(out_line)
 
 def plot_values(panel='Prostate', clines=['DU-145', 'PC-3'], plot_all_panels=True, threshold=100):  
@@ -1054,6 +1060,129 @@ def calc_cindex(pred_file, base_cell_lines=['DU-145', 'PC-3'], panels_for_compar
           writer.writerow(out_line) 
       writer.writerow(dict(zip(fieldnames, [None]*len(fieldnames))))
 
+def plot_ar_against_gi(pred_file, cell_lines=[], panels=[], threshold=1500, 
+  use_all_panels=False, select_subset=False, num_compounds=250, 
+  compound_file='ordered_compounds.csv', top_compounds=False):
+  
+  df_avg = pd.read_csv(pred_file, header = 0, index_col=False)
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  assert top_compounds + select_subset <= 1
+  if select_subset:
+    df_top_compounds = pd.read_csv(compound_file, header=0, index_col=False)
+    df_top_compounds = df_top_compounds.head(num_compounds)
+    smiles_subset = set(df_top_compounds.loc[:, 'smiles'])
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  
+  if not use_all_panels and len(cell_lines) > 0:
+    panels = []
+  panels_to_clines = dict(zip(panels, [set()]*len(panels)))
+  panel_and_cline_to_smiles = {}
+  panel_cline_and_smiles_to_value = {}
+  smiles_to_ar_score = {}
+  smiles_to_exclude = set()
+
+  counter = 0
+  for row_pred in df_avg.itertuples():
+    smiles = row_pred[1]
+    avg_score = row_pred[4]
+    if top_compounds:
+      if counter >= num_compounds:
+        smiles_subset = set(smiles_to_ar_score)
+        break
+    assert smiles not in smiles_to_ar_score
+    smiles_to_ar_score[smiles] = avg_score
+    counter += 1
+
+  time1 = time.time()
+  for row in df_nci60.itertuples():
+    if np.isnan(row[7]):
+      continue
+    smiles = row[3]
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]
+    if (select_subset or top_compounds) and smiles not in smiles_subset:
+      continue
+    this_panel = row[1].rstrip()
+    cell_line = row[2].rstrip()
+    
+    if use_all_panels:
+      if this_panel not in panels_to_clines:
+        panels_to_clines[this_panel] = set() 
+      if cell_line not in panels_to_clines[this_panel]:
+        panels_to_clines[this_panel].add(cell_line)
+    elif len(cell_lines)==0:
+      if this_panel in panels_to_clines and cell_line not in panels_to_clines[this_panel]:
+        panels_to_clines[this_panel].add(cell_line)
+    else: #Only use cell lines.
+      if cell_line in cell_lines:
+        if this_panel not in panels_to_clines:
+          panels_to_clines[this_panel] = set()
+        if cell_line not in panels_to_clines[this_panel]:
+          panels_to_clines[this_panel].add(cell_line)
+      else:
+        continue
+    
+    pair = (this_panel, cell_line)
+    if pair not in panel_and_cline_to_smiles:
+      panel_and_cline_to_smiles[pair] = []
+    if smiles in set(panel_and_cline_to_smiles[pair]):
+      smiles_to_exclude.add(smiles)
+    panel_and_cline_to_smiles[pair].append(smiles)
+    
+    triplet = (this_panel, cell_line, smiles)
+    panel_cline_and_smiles_to_value[triplet] = -1 * row[7]
+
+  time2 = time.time()
+  print('len(smiles_to_exclude): ', len(smiles_to_exclude))
+  print('time used for iterating through NCI60 data: ', time2 - time1)
+  for key in panel_and_cline_to_smiles:
+    panel_and_cline_to_smiles[key] = [smiles for smiles in panel_and_cline_to_smiles[key]
+      if smiles not in smiles_to_exclude]
+
+  for key in panel_and_cline_to_smiles:
+    smiles_list = panel_and_cline_to_smiles[key]
+    if len(smiles_list) < threshold:
+      continue
+    panel = key[0]
+    cline = key[1]
+    gi_value_list = [panel_cline_and_smiles_to_value[(panel, cline, cpd)] for cpd in smiles_list]
+    ar_list = [smiles_to_ar_score[cpd] for cpd in smiles_list]
+    # min_list = []
+    # max_list = []        
+    # for pair in metatask_to_task[meta_task_name]:
+    #   task_ind = pair[0]
+    #   y_task = y_true[:, task_ind]
+    #   if self.mode == "regression":
+    #     y_pred_task = y_pred[:, task_ind]
+    #   else:
+    #     y_pred_task = y_pred[:, task_ind, :]
+    #   w_task = w[:, task_ind]
+    #   y_true_task, y_pred_task = self.get_y_vectors(y_task, y_pred_task, w_task)
+
+    #   plt.plot(y_pred_task, y_true_task, 'b.')              
+    #   y_vector = np.append(y_true_task, y_pred_task)
+    #   min_list.append(np.amin(y_vector))
+    #   max_list.append(np.amax(y_vector))
+
+    plt.plot(ar_list, gi_value_list, 'b.')              
+    # y_vector = np.append(y_true_task, y_pred_task)
+    # min_list.append(np.amin(y_vector))
+    # max_list.append(np.amax(y_vector))
+    # min_value = np.amin(np.array(min_list)) 
+    # max_value = np.amax(np.array(max_list))         
+    # plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k') 
+    plt.title("Predicted AR score vs negated logGI50 value for panel " + panel + " cell line " + cline)       
+    plt.xlabel("Predicted AR scores")   
+    plt.ylabel("negated logGI50 value")
+    suffix = ""
+    if select_subset:
+      suffix += "selected_" + str(num_compounds) 
+    elif top_compounds:
+      suffix += "top_" + str(num_compounds) 
+    image_name = "plots/ar_vs_gi/" + panel + "_" + cline + suffix + ".png"
+    plt.savefig(image_name)
+    plt.close()
+
 if __name__ == "__main__":
   dataset = 'toxcast'
   #dataset = 'kiba'
@@ -1076,4 +1205,5 @@ if __name__ == "__main__":
   # calc_spearmanr('avg_ar_tc.csv', panels_for_comparison=[], threshold=30, select_subset=True,
   #   compound_file='ordered_compounds_2.csv')
   #calc_cindex('avg_ar_tc.csv', panels_for_comparison=[], compound_file='ordered_compounds.csv')
-  
+  # plot_ar_against_gi('avg_ar_tc.csv', panels=['Central Nervous System', 'Leukemia'], threshold=100, 
+  #   top_compounds=True, num_compounds=1000)
