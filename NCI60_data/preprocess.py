@@ -27,11 +27,24 @@ ER_list = [('toxcast', 'P03372'), ('toxcast', 'P19785'), ('toxcast', 'P49884'),
   ('toxcast', 'Q92731')]
 ER_list_s = [('toxcast', 'P03372')]
 AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
-#AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
-AR_antagonist_score_coef = [1.] + [0.]*8
+AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+#AR_antagonist_score_coef = [1.] + [0.]*8
 
 PROT_desc_path_list = ['../davis_data/prot_desc.csv', '../metz_data/prot_desc.csv', 
     '../KIBA_data/prot_desc.csv', '../full_toxcast/prot_desc.csv']
+
+def get_toxcast_code_dict(file_name='../full_toxcast/Assay_UniprotID_subgroup.csv'):
+  tc_code_and_protID_to_assays = {}
+  grouping_file = pd.read_csv(file_name, header=0, index_col=False)
+  for row in grouping_file.itertuples():
+    code = row[3]
+    tc_code = 'toxcast_' + str(code)
+    uniprot_ID = row[2]
+    pair = (tc_code, uniprot_ID) 
+    if pair not in tc_code_and_protID_to_assays:
+      tc_code_and_protID_to_assays[pair] = set()
+    tc_code_and_protID_to_assays[pair].add(row[1])
+  return tc_code_and_protID_to_assays
 
 def get_canonical_smiles_dict(file_name='invalid_smiles_canonicalized.csv', reverse=False):
   smiles_file = pd.read_csv(file_name, header=0, index_col=False)
@@ -1172,7 +1185,7 @@ def plot_ar_against_gi(pred_file, cell_lines=[], panels=[], threshold=1500,
     # max_value = np.amax(np.array(max_list))         
     # plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k') 
     plt.title("Predicted AR score vs negated logGI50 value for panel " + panel + " cell line " + cline)       
-    plt.xlabel("Predicted AR scores")   
+    plt.xlabel("Predicted AR antagonist scores")   
     plt.ylabel("negated logGI50 value")
     suffix = ""
     if select_subset:
@@ -1182,6 +1195,175 @@ def plot_ar_against_gi(pred_file, cell_lines=[], panels=[], threshold=1500,
     image_name = "plots/ar_vs_gi/" + panel + "_" + cline + suffix + ".png"
     plt.savefig(image_name)
     plt.close()
+
+def get_cpds_and_score_list(df_observe, smiles_set, AR_toxcast_codes=[], AR_coef_dict={},
+  uniprot_ID=None, tc_code_and_protID_to_assays={}, assay_to_col_ind={}, orig_invalid_val=None,
+  new_invalid_val=None):
+  valid_compounds = []
+  score_list = []
+  for row_obs in df_observe.itertuples():
+    smiles = row_obs[3]
+    if smiles not in smiles_set:
+      continue
+    all_valid = True
+    this_score = 0
+    for tc_code in AR_toxcast_codes:
+      if AR_coef_dict[tc_code] == 0:
+        continue
+      pair = (tc_code, uniprot_ID)
+      assay_names = tc_code_and_protID_to_assays[pair]
+      assert len(assay_names) == 1      
+      value = np.nan
+      for name in assay_names:
+        col_index = assay_to_col_ind[name]
+        value = row_obs[col_index]                           
+      if np.isnan(value):
+        all_valid = False
+        break
+      else:
+        if value == orig_invalid_val:
+          value = new_invalid_val
+        value = 4 - np.log10(value)
+        this_score += value * AR_coef_dict[tc_code]
+
+    if all_valid:
+      valid_compounds.append(smiles)
+      score_list.append(this_score)
+
+  return valid_compounds, score_list
+
+def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False, 
+  AR_antagonist_score_coef=[]):
+  orig_invalid_val = 1000000
+  new_invalid_val = 1000
+  panel_to_use = "Colon"
+  cell_line_to_use = "HCT-116"
+  uniprot_ID = 'P10275'
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  tc_code_and_protID_to_assays = get_toxcast_code_dict()
+  df_observe = pd.read_csv('../full_toxcast/Assays_smiles_INCHI.csv', header = 0, index_col=False)
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  
+  df_observe_colnames = list(df_observe)
+  ind_list = list(range(len(df_observe_colnames)))
+  ind_list = [ind + 1 for ind in ind_list]
+  assay_to_col_ind = dict(zip(df_observe_colnames, ind_list))
+  AR_toxcast_codes = ['toxcast_' + code for code in AR_toxcast_codes]
+    
+  panel_and_cline_to_smiles = {}
+  panel_cline_and_smiles_to_value = {}
+  smiles_to_ar_score = {}
+  smiles_to_exclude = set()
+
+  time1 = time.time()
+  for row in df_nci60.itertuples():    
+    this_panel = row[1].rstrip()
+    cell_line = row[2].rstrip()
+    if this_panel != panel_to_use:
+      continue
+    if cell_line != cell_line_to_use:
+      continue
+    if np.isnan(row[7]):
+      continue
+    
+    smiles = row[3]
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]
+    
+    pair = (this_panel, cell_line)
+    if pair not in panel_and_cline_to_smiles:
+      panel_and_cline_to_smiles[pair] = []
+    if smiles in set(panel_and_cline_to_smiles[pair]):
+      smiles_to_exclude.add(smiles)
+    panel_and_cline_to_smiles[pair].append(smiles)
+    
+    triplet = (this_panel, cell_line, smiles)
+    panel_cline_and_smiles_to_value[triplet] = -1 * row[7]
+
+  time2 = time.time()
+  print('len(smiles_to_exclude): ', len(smiles_to_exclude))
+  print('time used for iterating through NCI60 data: ', time2 - time1)
+  for key in panel_and_cline_to_smiles:
+    panel_and_cline_to_smiles[key] = [smiles for smiles in panel_and_cline_to_smiles[key]
+      if smiles not in smiles_to_exclude]
+
+  pair = (panel_to_use, cell_line_to_use)
+  smiles_set = set(panel_and_cline_to_smiles[pair])
+  
+  if not plot_individually:
+    AR_coef_dict = dict(zip(AR_toxcast_codes, AR_antagonist_score_coef))
+
+    valid_compounds, score_list = get_cpds_and_score_list(df_observe, smiles_set, 
+      AR_toxcast_codes=AR_toxcast_codes, AR_coef_dict=AR_coef_dict, uniprot_ID=uniprot_ID, 
+      orig_invalid_val=orig_invalid_val, tc_code_and_protID_to_assays=tc_code_and_protID_to_assays, 
+      assay_to_col_ind=assay_to_col_ind, new_invalid_val= new_invalid_val)
+    
+    score_array = np.asarray(score_list)
+    sorted_score_inds = np.argsort(score_array)
+    ordered_compounds = [valid_compounds[ind] for ind in sorted_score_inds]
+    gi_list = [panel_cline_and_smiles_to_value[(panel_to_use, cell_line_to_use, smiles)] for 
+      smiles in valid_compounds]
+    gi_array = np.asarray(gi_list)
+    sorted_gi_array = np.sort(gi_array)
+    cindex = concordance_index(gi_array, score_array)
+    ndcg, _, _ = ndcg_tool(ordered_compounds, panel_cline_and_smiles_to_value, sorted_gi_array, 
+      cell_line=cell_line_to_use, panel=panel_to_use)
+    rho, pval = scipy.stats.spearmanr(gi_array, score_array)
+    print("Cell line: ", cell_line_to_use)
+    print("Number of valid compounds: ", len(valid_compounds))
+    print("Concordance index: ", cindex)
+    print("NDCG: ", ndcg)
+    print("Spearman correlation: ", rho)
+    print("Spearman p-value: ", pval)
+
+    plt.plot(score_list, gi_list, 'b.')            
+    plt.xlabel("AR antagonist scores")
+    plt.ylabel("negated logGI50 value")
+    image_name = "plots/ar_vs_gi_real/" + panel_to_use + "_" + cell_line_to_use + ".png"
+    plt.savefig(image_name)
+    plt.close()
+
+  else:
+    for i in range(len(AR_antagonist_score_coef)):
+      modified_score = [0.] * len(AR_antagonist_score_coef)
+      modified_score[i] = np.sign(AR_antagonist_score_coef[i]) * 1.0
+      AR_coef_dict = dict(zip(AR_toxcast_codes, modified_score))
+
+      valid_compounds, score_list = get_cpds_and_score_list(df_observe, smiles_set, 
+        AR_toxcast_codes=AR_toxcast_codes, AR_coef_dict=AR_coef_dict, uniprot_ID=uniprot_ID, 
+        orig_invalid_val=orig_invalid_val, tc_code_and_protID_to_assays=tc_code_and_protID_to_assays, 
+        assay_to_col_ind=assay_to_col_ind, new_invalid_val= new_invalid_val)
+      #pdb.set_trace()
+      
+      score_array = np.asarray(score_list)
+      sorted_score_inds = np.argsort(score_array)
+      ordered_compounds = [valid_compounds[ind] for ind in sorted_score_inds]
+      gi_list = [panel_cline_and_smiles_to_value[(panel_to_use, cell_line_to_use, smiles)] for 
+        smiles in valid_compounds]
+      gi_array = np.asarray(gi_list)
+      sorted_gi_array = np.sort(gi_array)
+      cindex = concordance_index(gi_array, score_array)
+      ndcg, _, _ = ndcg_tool(ordered_compounds, panel_cline_and_smiles_to_value, sorted_gi_array, 
+        cell_line=cell_line_to_use, panel=panel_to_use)
+      rho, pval = scipy.stats.spearmanr(gi_array, score_array)
+      print("Cell line: ", cell_line_to_use)
+      print("Number of valid compounds: ", len(valid_compounds))
+      print("Concordance index: ", cindex)
+      print("NDCG: ", ndcg)
+      print("Spearman correlation: ", rho)
+      print("Spearman p-value: ", pval)
+
+      plt.plot(score_list, gi_list, 'b.')            
+      prefix = ""
+      if np.sign(modified_score[i]) == -1.0:
+        prefix = "negated "
+      plt.xlabel(prefix + AR_toxcast_codes[i])
+
+      plt.ylabel("negated logGI50 value")
+      image_name = "plots/ar_vs_gi_real/" + panel_to_use + "_" + cell_line_to_use + \
+        AR_toxcast_codes[i] + ".png"
+      plt.savefig(image_name)
+      plt.close()
 
 if __name__ == "__main__":
   dataset = 'toxcast'
@@ -1198,7 +1380,7 @@ if __name__ == "__main__":
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
   # calculate_mean_activity('avg_ar_tc.csv')
   #calculate_ndcg('avg_ar_tc.csv')
-  calc_subsets_cindex('avg_ar_tc.csv')
+  #calc_subsets_cindex('avg_ar_tc.csv')
   #plot_values()
   #get_intersection()
   # get_selective_compounds()
@@ -1207,3 +1389,5 @@ if __name__ == "__main__":
   #calc_cindex('avg_ar_tc.csv', panels_for_comparison=[], compound_file='ordered_compounds.csv')
   # plot_ar_against_gi('avg_ar_tc.csv', panels=['Central Nervous System', 'Leukemia'], threshold=100, 
   #   top_compounds=True, num_compounds=1000)
+  plot_real_ar_to_gi(AR_toxcast_codes=AR_toxcast_codes, plot_individually=True, 
+    AR_antagonist_score_coef=AR_antagonist_score_coef)
