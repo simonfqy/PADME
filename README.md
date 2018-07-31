@@ -9,12 +9,12 @@ The protein descriptors used is PSC, Protein Sequence Composition descriptor, wh
 
 Currently it works fine for `graphconvreg`, `weave_regression`, `tf_regression`, and `mpnn`. I will need updates to the classification models so that it would work correctly for them too, like `weave`, `graphconv`, etc. 
 
-You must first have `DeepChem` installed for `PADME` to work correctly.
+You must first have `DeepChem` installed for `PADME` to work correctly, which in turn requires you to install `TensorFlow`.
 
 Other folders like `oldCode` and `phase1` are not related to PADME, they are for the first phase of my project. You can neglect them.
 
 # Built with
-Python - Process data and used for deep learning
+Python - Process data and constructing deep learning model
 
 # Author
 simonfqy (Qingyuan Feng)
