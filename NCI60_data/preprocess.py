@@ -1232,27 +1232,9 @@ def get_cpds_and_score_list(df_observe, smiles_set, AR_toxcast_codes=[], AR_coef
 
   return valid_compounds, score_list
 
-def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False, 
-  AR_antagonist_score_coef=[]):
-  orig_invalid_val = 1000000
-  new_invalid_val = 1000
-  panel_to_use = "Colon"
-  cell_line_to_use = "HCT-116"
-  uniprot_ID = 'P10275'
-  invalid_to_canon_smiles = get_canonical_smiles_dict()
-  tc_code_and_protID_to_assays = get_toxcast_code_dict()
-  df_observe = pd.read_csv('../full_toxcast/Assays_smiles_INCHI.csv', header = 0, index_col=False)
-  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
-  
-  df_observe_colnames = list(df_observe)
-  ind_list = list(range(len(df_observe_colnames)))
-  ind_list = [ind + 1 for ind in ind_list]
-  assay_to_col_ind = dict(zip(df_observe_colnames, ind_list))
-  AR_toxcast_codes = ['toxcast_' + code for code in AR_toxcast_codes]
-    
+def read_nci60(df_nci60, panel_to_use, cell_line_to_use, invalid_to_canon_smiles={}):
   panel_and_cline_to_smiles = {}
   panel_cline_and_smiles_to_value = {}
-  smiles_to_ar_score = {}
   smiles_to_exclude = set()
 
   time1 = time.time()
@@ -1286,6 +1268,29 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
   for key in panel_and_cline_to_smiles:
     panel_and_cline_to_smiles[key] = [smiles for smiles in panel_and_cline_to_smiles[key]
       if smiles not in smiles_to_exclude]
+
+  return panel_and_cline_to_smiles, panel_cline_and_smiles_to_value 
+
+def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False, 
+  AR_antagonist_score_coef=[]):
+  orig_invalid_val = 1000000
+  new_invalid_val = 1000
+  panel_to_use = "Colon"
+  cell_line_to_use = "HCT-116"
+  uniprot_ID = 'P10275'
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  tc_code_and_protID_to_assays = get_toxcast_code_dict()
+  df_observe = pd.read_csv('../full_toxcast/Assays_smiles_INCHI.csv', header = 0, index_col=False)
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  
+  df_observe_colnames = list(df_observe)
+  ind_list = list(range(len(df_observe_colnames)))
+  ind_list = [ind + 1 for ind in ind_list]
+  assay_to_col_ind = dict(zip(df_observe_colnames, ind_list))
+  AR_toxcast_codes = ['toxcast_' + code for code in AR_toxcast_codes]
+
+  panel_and_cline_to_smiles, panel_cline_and_smiles_to_value = read_nci60(df_nci60, 
+    panel_to_use, cell_line_to_use, invalid_to_canon_smiles={})
 
   pair = (panel_to_use, cell_line_to_use)
   smiles_set = set(panel_and_cline_to_smiles[pair])
@@ -1333,7 +1338,6 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
         AR_toxcast_codes=AR_toxcast_codes, AR_coef_dict=AR_coef_dict, uniprot_ID=uniprot_ID, 
         orig_invalid_val=orig_invalid_val, tc_code_and_protID_to_assays=tc_code_and_protID_to_assays, 
         assay_to_col_ind=assay_to_col_ind, new_invalid_val= new_invalid_val)
-      #pdb.set_trace()
       
       score_array = np.asarray(score_list)
       sorted_score_inds = np.argsort(score_array)
@@ -1365,6 +1369,120 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
       plt.savefig(image_name)
       plt.close()
 
+
+  panel_and_cline_to_smiles, panel_cline_and_smiles_to_value = read_nci60(df_nci60, 
+    panel_to_use, cell_line_to_use, invalid_to_canon_smiles={})
+  pair = (panel_to_use, cell_line_to_use)
+  smiles_set = set(panel_and_cline_to_smiles[pair])
+  
+  if not plot_individually:
+    AR_coef_dict = dict(zip(AR_toxcast_codes, AR_antagonist_score_coef))
+
+    valid_compounds, score_list = get_cpds_and_score_list(df_observe, smiles_set, 
+      AR_toxcast_codes=AR_toxcast_codes, AR_coef_dict=AR_coef_dict, uniprot_ID=uniprot_ID, 
+      orig_invalid_val=orig_invalid_val, tc_code_and_protID_to_assays=tc_code_and_protID_to_assays, 
+      assay_to_col_ind=assay_to_col_ind, new_invalid_val= new_invalid_val)
+    
+    score_array = np.asarray(score_list)
+    sorted_score_inds = np.argsort(score_array)
+    ordered_compounds = [valid_compounds[ind] for ind in sorted_score_inds]
+    gi_list = [panel_cline_and_smiles_to_value[(panel_to_use, cell_line_to_use, smiles)] for 
+      smiles in valid_compounds]
+    gi_array = np.asarray(gi_list)
+    sorted_gi_array = np.sort(gi_array)
+    cindex = concordance_index(gi_array, score_array)
+    ndcg, _, _ = ndcg_tool(ordered_compounds, panel_cline_and_smiles_to_value, sorted_gi_array, 
+      cell_line=cell_line_to_use, panel=panel_to_use)
+    rho, pval = scipy.stats.spearmanr(gi_array, score_array)
+    print("Cell line: ", cell_line_to_use)
+    print("Number of valid compounds: ", len(valid_compounds))
+    print("Concordance index: ", cindex)
+    print("NDCG: ", ndcg)
+    print("Spearman correlation: ", rho)
+    print("Spearman p-value: ", pval)
+
+def calculate_mean_for_observed_ar(top_n_list = [20, 10], out_file='true_ar_mean_logGI50.csv', 
+  threshold=30, cell_lines = ['DU-145', 'PC-3'], AR_toxcast_codes=[], AR_antagonist_score_coef=[]):
+  orig_invalid_val = 1000000
+  new_invalid_val = 1000
+  df_observe = pd.read_csv('../full_toxcast/Assays_smiles_INCHI.csv', header = 0, index_col=False)
+  df_avg = pd.read_csv(pred_file, header=0, index_col=False)
+  df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
+  panel = 'Prostate'
+  uniprot_ID = 'P10275'
+  invalid_to_canon_smiles = get_canonical_smiles_dict()
+  tc_code_and_protID_to_assays = get_toxcast_code_dict()
+
+  df_observe_colnames = list(df_observe)
+  ind_list = list(range(len(df_observe_colnames)))
+  ind_list = [ind + 1 for ind in ind_list]
+  assay_to_col_ind = dict(zip(df_observe_colnames, ind_list))
+  AR_toxcast_codes = ['toxcast_' + code for code in AR_toxcast_codes]
+
+  cell_lines_to_pairs = {}
+  cline_to_topn_list = {}
+  cline_and_topn_to_value_list = {}
+  
+  for row in df_nci60.itertuples():    
+    if not re.search(panel, row[1], re.I):
+      continue
+    if np.isnan(row[7]):
+      continue     
+    smiles = row[3]    
+    if smiles in invalid_to_canon_smiles:
+      smiles = invalid_to_canon_smiles[smiles]
+    if row[2] not in cell_lines_to_pairs:
+      cell_lines_to_pairs[row[2]] = {}
+    cell_lines_to_pairs[row[2]].update({smiles: row[7]})
+
+  for cline in cell_lines_to_pairs:
+    compound_to_value = cell_lines_to_pairs[cline]
+    size = len(compound_to_value)
+    if size < threshold:
+      continue
+    cline_top_n_list = [size] + top_n_list    
+    cline_to_topn_list[cline] = cline_top_n_list
+    
+    for i, top_n in enumerate(cline_top_n_list):
+      if top_n > size:
+        continue
+      if i < len(cline_top_n_list) - 1:
+        # Sanity check.
+        assert cline_top_n_list[i + 1] <= top_n
+      compound_to_value_subset = {} 
+      for row in df_avg.itertuples():
+        smiles = row[1]
+        if smiles in compound_to_value:
+          compound_to_value_subset[smiles] = compound_to_value[smiles]        
+          if len(compound_to_value_subset) >= top_n:
+            #pdb.set_trace()
+            compound_to_value = compound_to_value_subset
+            cline_and_topn_to_value_list[(cline, top_n)] = list(compound_to_value.values())
+            break
+
+  cell_line_list = list(cell_lines_to_pairs)
+  
+  with open(out_file, 'w', newline='') as csvfile:
+    fieldnames = ['Panel', 'top_n', 'cell line', 'num_observation', 'mean value', 
+      'standard deviation']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    out_line = {'Panel': panel}
+    for cell_line in cell_line_list:
+      out_line.update({'cell line': cell_line})
+      if cell_line not in cline_to_topn_list:
+        continue
+      this_top_n_list = cline_to_topn_list[cell_line]
+      for top_n in this_top_n_list:
+        pair = (cell_line, top_n)
+        if pair not in cline_and_topn_to_value_list:
+          continue
+        values = cline_and_topn_to_value_list[pair]
+        values = np.asarray(values)
+        out_line.update({'top_n': top_n, 'num_observation': len(values), 'mean value': np.mean(values),
+          'standard deviation': np.std(values)})
+        writer.writerow(out_line)
+
 if __name__ == "__main__":
   dataset = 'toxcast'
   #dataset = 'kiba'
@@ -1389,5 +1507,7 @@ if __name__ == "__main__":
   #calc_cindex('avg_ar_tc.csv', panels_for_comparison=[], compound_file='ordered_compounds.csv')
   # plot_ar_against_gi('avg_ar_tc.csv', panels=['Central Nervous System', 'Leukemia'], threshold=100, 
   #   top_compounds=True, num_compounds=1000)
-  plot_real_ar_to_gi(AR_toxcast_codes=AR_toxcast_codes, plot_individually=True, 
+  # plot_real_ar_to_gi(AR_toxcast_codes=AR_toxcast_codes, plot_individually=True, 
+  #   AR_antagonist_score_coef=AR_antagonist_score_coef)
+  calculate_mean_for_observed_ar(AR_toxcast_codes=AR_toxcast_codes, 
     AR_antagonist_score_coef=AR_antagonist_score_coef)
