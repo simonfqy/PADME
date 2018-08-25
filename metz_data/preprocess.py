@@ -12,57 +12,39 @@ import sys
 import pwd
 import pdb
 import csv
-import re
-import math
 
-df = pd.read_csv('Metz_interaction.csv', header = 0, index_col=0, usecols=range(2, 186))
-#df = df.head(3)
-protList = list(df)[11:]
-molList = list(df.index)
-molList = [molName for molName in molList if molName == molName]
-invalid_val = -1.0
+df = pd.read_csv('Bio_results.csv', header = 2, index_col=0, usecols=range(3, 76))
+#df = df.head(15000)
+molList = list(df)
 #print(len(molList))
-interactions = []
-#rowCount = 1 
-for row in df.itertuples():  
-  values = list(row)
-  if values[0] != values[0]:
-    continue
-  values = values[12:]
-  intxn = []  
-  for element in values:
-    if element == element: #Not a NAN value
-      matchObj = re.match('\d', element)
-      if not matchObj:
-        intxn.append(invalid_val)
-      else:
-        intxn.append(float(element))
-    else:
-      intxn.append(invalid_val)  
-  interactions.append(intxn)
-  #rowCount += 1  
-  #print(interactions)
+protList = list(df.index)
+interactions = [] 
+for row in df.itertuples():
+    intxn = list(row)[1:]
+    interactions.append(intxn)  
+    #print(interactions)
 interactions = np.array(interactions)
-#interaction_bin = (interactions >= 7.6) * 1
+interactions[np.isnan(interactions)] = 10000
+interactions = 9 - np.log10(interactions)
+interaction_bin = (interactions >= 7.0) * 1
 counter = 0
-#pdb.set_trace()
-with open('restructured.csv', 'w', newline='') as csvfile:
-  fieldnames = ['interaction_value', 'smiles', 'proteinName']
-  writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
-  writer.writeheader()
-  for i, compound in enumerate(molList):
-    for j, protein in enumerate(protList):
-      # will start writing rows.
-      intxn_value = interactions[i][j]
-      #intxn_bin = interaction_bin[i][j]      
-      if intxn_value == -1:        
-        continue
-      writer.writerow({'interaction_value': intxn_value,
-        'smiles': compound, 'proteinName': protein})
-      #counter += 1
-  #     if (counter > 2400):
-  #       break
-  # if (counter > 2400):
-  #   break
+with open('restructured_bin2.csv', 'w', newline='') as csvfile:
+    fieldnames = ['davis_bin', 'davis', 'smiles', 'proteinName']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    for i, protein in enumerate(protList):
+        for j, compound in enumerate(molList):
+            # will start writing rows.
+            intxn_value = interactions[i][j]
+            intxn_bin = interaction_bin[i][j]
+            #if  np.isnan(intxn_value):
+            #    intxn_value = 10000
+            writer.writerow({'davis_bin': intxn_bin, 'davis': intxn_value,
+              'smiles': compound, 'proteinName': protein})
+            counter += 1
+            if (counter > 2400):
+                break
+        if (counter > 2400):
+            break
 
             
