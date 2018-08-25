@@ -45,7 +45,7 @@ pair_list = []
 subgroup_list = []
 pair_set = set()
 subgroup_set = set()
-# The the (compound, protein) pair or group id are keys, and row or column indices are values.
+# The (compound, protein) pair or group id are keys, and row or column indices are values.
 row_ind_dict = {}
 col_ind_dict = {}
 na_counter = 0
@@ -128,7 +128,7 @@ for i in range(num_inf_entries):
 shuffled = np.random.permutation(range(len(pair_list)))
 start_writing = time.time()
 subgroup_list = ['toxcast_' + str(task_id) for task_id in subgroup_list]
-with open('restructured_toy.csv', 'w', newline='') as csvfile:
+with open('restructured.csv', 'w', newline='') as csvfile:
   fieldnames = subgroup_list + ['smiles', 'proteinName', 'protein_dataset']
   writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
   writer.writeheader()
