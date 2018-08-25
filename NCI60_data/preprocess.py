@@ -1279,8 +1279,8 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
   AR_antagonist_score_coef=[]):
   orig_invalid_val = 1000000
   new_invalid_val = 1000
-  panel_to_use = "Prostate"
-  cell_line_to_use = ["PC-3"]
+  panel_to_use = "Colon"
+  cell_line_to_use = ["HCT-116"]
   uniprot_ID = 'P10275'
   invalid_to_canon_smiles = get_canonical_smiles_dict()
   tc_code_and_protID_to_assays = get_toxcast_code_dict()
@@ -1326,7 +1326,8 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
     print("Spearman correlation: ", rho)
     print("Spearman p-value: ", pval)
 
-    plt.plot(score_list, gi_list, 'b.')            
+    plt.plot(score_list, gi_list, 'b.')
+    plt.title(panel_to_use + " " + cell_line_to_use[0])            
     plt.xlabel("AR antagonist scores")
     plt.ylabel("negated logGI50 value")
     image_name = "plots/ar_vs_gi_real/" + panel_to_use + "_" + cell_line_to_use[0] + ".png"
