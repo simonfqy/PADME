@@ -107,7 +107,7 @@ for i in range(num_inf_entries):
   second_ind = inf_indices[1][i]
   assert np.isinf(data_matrix[first_ind, second_ind])
   data_matrix[first_ind, second_ind] = np.ceil(max_val)
-#pdb.set_trace()
+# pdb.set_trace()
 
 # num_bins = 20
 # fig, ax = plt.subplots()
@@ -128,7 +128,7 @@ for i in range(num_inf_entries):
 shuffled = np.random.permutation(range(len(pair_list)))
 start_writing = time.time()
 subgroup_list = ['toxcast_' + str(task_id) for task_id in subgroup_list]
-with open('restructured_new.csv', 'w', newline='') as csvfile:
+with open('restructured_toy.csv', 'w', newline='') as csvfile:
   fieldnames = subgroup_list + ['smiles', 'proteinName', 'protein_dataset']
   writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
   writer.writeheader()
