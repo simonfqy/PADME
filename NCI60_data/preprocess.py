@@ -26,9 +26,14 @@ AR_list_s = [('toxcast', 'P10275')]
 ER_list = [('toxcast', 'P03372'), ('toxcast', 'P19785'), ('toxcast', 'P49884'), 
   ('toxcast', 'Q92731')]
 ER_list_s = [('toxcast', 'P03372')]
-AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
-AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+# AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
+# AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+# AR_toxcast_codes = ['6620', '8110', '8010']
+# AR_antagonist_score_coef = [1, 0.5, 0.5]
 #AR_antagonist_score_coef = [1.] + [0.]*8
+
+AR_toxcast_codes = ['6620', '7100', '7200', '3100', '7300', '8100', '8000']
+AR_agonist_score_coef = [1, 0.5, 0.5, 1, 1/3, 1/3, 1/3]
 
 PROT_desc_path_list = ['../davis_data/prot_desc.csv', '../metz_data/prot_desc.csv', 
     '../KIBA_data/prot_desc.csv', '../full_toxcast/prot_desc.csv']
@@ -216,7 +221,7 @@ def produce_dataset(dataset_used='toxcast', prot_desc_path_list=PROT_desc_path_l
   print("Time spent in writing: ", end_writing - start_writing)
 
 def synthesize_ranking(prediction_file, output_file, direction=True, dataset_used='toxcast', 
-  weigh_by_occurrence=False, AR_toxcast_codes=[]):
+  weigh_by_occurrence=False, AR_score_coef = [], AR_toxcast_codes=[]):
   assert dataset_used in ['toxcast', 'kiba']
   csv_data = {
     'toxcast': '../full_toxcast/restructured.csv',
@@ -249,7 +254,7 @@ def synthesize_ranking(prediction_file, output_file, direction=True, dataset_use
       composite_preds += pred_task
   else:
     AR_toxcast_codes = ['toxcast_' + code for code in AR_toxcast_codes]
-    AR_coef_dict = dict(zip(AR_toxcast_codes, AR_antagonist_score_coef))
+    AR_coef_dict = dict(zip(AR_toxcast_codes, AR_score_coef))
     for task_code in AR_toxcast_codes:
       pred_task_vector = np.asarray(preds_df.loc[:, task_code])
       composite_preds += pred_task_vector * AR_coef_dict[task_code]   
@@ -307,7 +312,8 @@ def get_invalid_smiles(out_file='invalid_smiles.csv'):
       writer.writerow(out_line)
   err_log.close()
 
-def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_prot=[], direction=True):
+def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_prot=[], 
+  direction=True):
   assert isinstance(input_files_list, list)
   assert len(input_files_list) > 0
   record_dict_list = []
@@ -1276,11 +1282,15 @@ def read_nci60(df_nci60, panel_to_use, cell_line_to_use=[], invalid_to_canon_smi
   return panel_and_cline_to_smiles, panel_cline_and_smiles_to_value 
 
 def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False, 
-  AR_antagonist_score_coef=[]):
+  AR_score_coef=[], antagonist=True):
+  if antagonist:
+    score_type = "antagonist"
+  else:
+    score_type = "agonist"
   orig_invalid_val = 1000000
   new_invalid_val = 1000
-  panel_to_use = "Colon"
-  cell_line_to_use = ["HCT-116"]
+  panel_to_use = "Breast"
+  cell_line_to_use = ["MDA-MB-231/ATCC"]
   uniprot_ID = 'P10275'
   invalid_to_canon_smiles = get_canonical_smiles_dict()
   tc_code_and_protID_to_assays = get_toxcast_code_dict()
@@ -1301,7 +1311,7 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
   smiles_set = set(panel_and_cline_to_smiles[pair])
   
   if not plot_individually:
-    AR_coef_dict = dict(zip(AR_toxcast_codes, AR_antagonist_score_coef))
+    AR_coef_dict = dict(zip(AR_toxcast_codes, AR_score_coef))
 
     valid_compounds, score_list = get_cpds_and_score_list(df_observe, smiles_set, 
       AR_toxcast_codes=AR_toxcast_codes, AR_coef_dict=AR_coef_dict, uniprot_ID=uniprot_ID, 
@@ -1328,16 +1338,17 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
 
     plt.plot(score_list, gi_list, 'b.')
     plt.title(panel_to_use + " " + cell_line_to_use[0])            
-    plt.xlabel("AR antagonist scores")
+    plt.xlabel("AR " + score_type + " scores")
     plt.ylabel("negated logGI50 value")
-    image_name = "plots/ar_vs_gi_real/" + panel_to_use + "_" + cell_line_to_use[0] + ".png"
+    image_name = "plots/ar_vs_gi_real/" + panel_to_use + "_" + cell_line_to_use[0] + \
+      "_" + score_type + ".png"
     plt.savefig(image_name)
     plt.close()
 
   else:
-    for i in range(len(AR_antagonist_score_coef)):
-      modified_score = [0.] * len(AR_antagonist_score_coef)
-      modified_score[i] = np.sign(AR_antagonist_score_coef[i]) * 1.0
+    for i in range(len(AR_score_coef)):
+      modified_score = [0.] * len(AR_score_coef)
+      modified_score[i] = np.sign(AR_score_coef[i]) * 1.0
       AR_coef_dict = dict(zip(AR_toxcast_codes, modified_score))
 
       valid_compounds, score_list = get_cpds_and_score_list(df_observe, smiles_set, 
@@ -1377,7 +1388,7 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
  
 
 def calculate_mean_for_observed_ar(top_n_list = [20, 10], out_file='true_ar_mean_logGI50.csv', 
-  threshold=30, cell_lines = ['DU-145', 'PC-3'], AR_toxcast_codes=[], AR_antagonist_score_coef=[]):
+  threshold=30, cell_lines = ['DU-145', 'PC-3'], AR_toxcast_codes=[], AR_score_coef=[]):
 
   orig_invalid_val = 1000000
   new_invalid_val = 1000
@@ -1393,7 +1404,7 @@ def calculate_mean_for_observed_ar(top_n_list = [20, 10], out_file='true_ar_mean
   ind_list = [ind + 1 for ind in ind_list]
   assay_to_col_ind = dict(zip(df_observe_colnames, ind_list))
   AR_toxcast_codes = ['toxcast_' + code for code in AR_toxcast_codes]
-  AR_coef_dict = dict(zip(AR_toxcast_codes, AR_antagonist_score_coef))
+  AR_coef_dict = dict(zip(AR_toxcast_codes, AR_score_coef))
 
   panel_and_cline_to_smiles, panel_cline_and_smiles_to_value = read_nci60(df_nci60, 
     panel_to_use, cell_line_to_use=cell_lines, invalid_to_canon_smiles={}, negative=False)
@@ -1464,7 +1475,8 @@ if __name__ == "__main__":
   # synthesize_ranking('preds_arer_kiba_graphconv.csv', 'ordered_arer_kiba_gc.csv', weigh_by_occurrence=True,
   #   AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
   # synthesize_ranking('preds_arer_tc_ecfp.csv', 'ordered_arer_tc_ecfp.csv', 
-  #   AR_toxcast_codes=AR_toxcast_codes, direction=True, dataset_used=dataset)
+  #   direction=True, dataset_used=dataset, AR_toxcast_codes=AR_toxcast_codes, 
+  #   AR_score_coef=AR_antagonist_score_coef)
   #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
   #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
@@ -1480,6 +1492,6 @@ if __name__ == "__main__":
   # plot_ar_against_gi('avg_ar_tc.csv', panels=['Central Nervous System', 'Leukemia'], threshold=100, 
   #   top_compounds=True, num_compounds=1000)
   plot_real_ar_to_gi(AR_toxcast_codes=AR_toxcast_codes, plot_individually=False, 
-    AR_antagonist_score_coef=AR_antagonist_score_coef)
+    AR_score_coef=AR_agonist_score_coef, antagonist=False)
   # calculate_mean_for_observed_ar(AR_toxcast_codes=AR_toxcast_codes, 
-  #   AR_antagonist_score_coef=AR_antagonist_score_coef)
+  #   AR_score_coef=AR_antagonist_score_coef)
