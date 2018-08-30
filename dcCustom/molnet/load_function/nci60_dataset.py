@@ -27,16 +27,16 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
   cold_drug=False, cold_target=False, split_warm=False, filter_threshold=0,
   prot_seq_dict=None): 
   
-  data_to_train = 'kiba'
+  data_to_train = 'tc'
   
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    file_name = "restructured_toy"
+    file_name = "all_prot_intxn"
     
   elif mode == 'classification':   
     file_name = "restructured_bin"
 
-  file_name = file_name + "_" + data_to_train
+  file_name = file_name + "_" + data_to_train + '.csv'
   data_dir = "NCI60_data/"
   dataset_file = os.path.join(data_dir, file_name)
   df = pd.read_csv(dataset_file, header = 0, index_col=False)
@@ -71,8 +71,7 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
   loader = dcCustom.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", protein_field = "proteinName", 
       source_field = 'protein_dataset', featurizer=featurizer, prot_seq_dict=prot_seq_dict)
-  dataset = loader.featurize(dataset_file, shard_size=8196)
-  
+  dataset = loader.featurize(dataset_file, shard_size=8192)  
       
   # print("About to transform data")
   # for transformer in transformers:

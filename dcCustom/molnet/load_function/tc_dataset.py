@@ -76,7 +76,7 @@ def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split
   loader = dcCustom.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", protein_field = "proteinName", 
       source_field = 'protein_dataset', featurizer=featurizer, prot_seq_dict=prot_seq_dict)
-  dataset = loader.featurize(dataset_file, shard_size=8196)
+  dataset = loader.featurize(dataset_file, shard_size=8192)
   
   if mode == 'regression':
     transformers = [

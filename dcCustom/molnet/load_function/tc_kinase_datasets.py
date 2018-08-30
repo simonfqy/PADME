@@ -71,7 +71,7 @@ def load_tc_kinases(featurizer = 'Weave', cross_validation=False, test=False, sp
   loader = dcCustom.data.CSVLoader(
       tasks = tasks, smiles_field="smiles", protein_field = "proteinName",
       featurizer=featurizer)
-  dataset = loader.featurize(dataset_file, shard_size=8196)
+  dataset = loader.featurize(dataset_file, shard_size=8192)
   
   if mode == 'regression':
     transformers = [
