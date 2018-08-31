@@ -88,6 +88,16 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
     suffix = "_cold_drug" + suffix
   elif cold_target:
     suffix = "_cold_target" + suffix
+
+  opt_suffix = ""
+  if re.match('GraphConv', featurizer, re.I):
+    opt_suffix = "_gc"
+  elif re.match('Weave', featurizer, re.I):
+    opt_suffix = "_wv"
+  elif re.match('ecfp', featurizer, re.I):
+    pass
+  else:
+    assert False
   
   featurizer = featurizer + "_CV" 
   save_dir = os.path.join(data_dir, featurizer + suffix + "/" + mode + "/" + split)
@@ -240,7 +250,8 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
         drug_ind = drug_mapping[drug_mol]
         writer.writerow({some_id_name: some_id, 'smiles': drug_smiles, 'index': drug_ind})
 
-  triplet_split_name = "triplet_split" + suffix + ".csv"
+  suffix = suffix + "_3"
+  triplet_split_name = "triplet_split" + opt_suffix + suffix + ".csv"
   for directory in dirs:
     with open(directory + triplet_split_name, 'w', newline='') as csvfile:
       fieldnames = ['drug', 'target', 'value', 'fold']
@@ -277,7 +288,15 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
   print("Processing took %f seconds." % (time_end - time_start))
 
 if __name__ == '__main__':
-  #parse_data(featurizer='ECFP', cold_target=True, filter_threshold=1)
-  parse_data(dataset_nm='metz', featurizer = 'ECFP', cold_drug=True, filter_threshold=1)
-  #parse_data(dataset_nm='kiba', featurizer = 'ECFP', split_warm=True, filter_threshold=6)
+  # parse_data(featurizer='GraphConv', cold_target=True, filter_threshold=1)
+  parse_data(featurizer='GraphConv', cold_target=True, filter_threshold=1)
+  parse_data(featurizer='GraphConv', cold_drug=True, filter_threshold=1)
+  parse_data(featurizer='GraphConv', split_warm=True, filter_threshold=1)
+  # parse_data(dataset_nm='metz', featurizer='GraphConv', split_warm=True, filter_threshold=1)
+  # parse_data(dataset_nm='metz', featurizer='GraphConv', cold_drug=True, filter_threshold=1)
+  # parse_data(dataset_nm='metz', featurizer='GraphConv', cold_target=True, filter_threshold=1)
+  #parse_data(dataset_nm='kiba', cold_target=True, filter_threshold=6)
+  # parse_data(dataset_nm='kiba', featurizer='GraphConv', split_warm=True, filter_threshold=6)
+  # parse_data(dataset_nm='kiba', featurizer='GraphConv', cold_drug=True, filter_threshold=6)
+  # parse_data(dataset_nm='kiba', featurizer='GraphConv', cold_target=True, filter_threshold=6)
   

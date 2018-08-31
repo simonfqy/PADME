@@ -50,7 +50,7 @@ def load_prot_dict(prot_desc_dict, prot_seq_dict, prot_desc_path,
     prot_seq_dict[pair] = (phosphorylated, sequence)    
 
 def run_analysis(_):
-  dataset=FLAGS.dataset 
+  dataset = FLAGS.dataset 
   model = FLAGS.model
   thresholding = FLAGS.thresholding
   split= FLAGS.split
@@ -86,9 +86,19 @@ def run_analysis(_):
   intermediate_file = FLAGS.intermediate_file
   plot = FLAGS.plot
   aggregate = FLAGS.aggregate
+  predict_only = FLAGS.predict_only
+  csv_out = FLAGS.csv_out
+  tensorboard = FLAGS.tensorboard
+  
+  if predict_only:
+    hyper_param_search = False
+    cross_validation = False
+    plot = False
+    early_stopping = False
+    test = False                
+  else:  
+    assert (predict_cold + cold_drug + cold_target + split_warm) <= 1
 
-  assert (predict_cold + cold_drug + cold_target + split_warm) <= 1                
-                 
   assert model == model # Not a NAN
   searchObj = re.search('reg', model, re.I)
   mode = 'regression' if searchObj else 'classification'
@@ -128,7 +138,8 @@ def run_analysis(_):
     'toxcast': dcCustom.molnet.load_toxcast,
     'all_kinase': dcCustom.molnet.load_kinases,
     'tc_kinase':dcCustom.molnet.load_tc_kinases,
-    'tc_full_kinase': dcCustom.molnet.load_tc_full_kinases
+    'tc_full_kinase': dcCustom.molnet.load_tc_full_kinases,
+    'nci60': dcCustom.molnet.load_nci60
   }  
   # if mode == 'regression' or mode == 'reg-threshold':
     # model = 'weave_regression'
@@ -216,6 +227,7 @@ def run_analysis(_):
         patience=patience,
         model_dir=model_dir,
         log_file=log_file,
+        tensorboard=tensorboard,
         mode=mode,
         no_concordance_index=no_concord,
         no_r2=no_r2,
@@ -260,12 +272,17 @@ def run_analysis(_):
           no_concordance_index=no_concord,
           no_r2=no_r2,
           plot=plot,
-          aggregated_tasks=aggregated_tasks)
+          aggregated_tasks=aggregated_tasks,
+          tensorboard=tensorboard,
+          predict_only=predict_only,
+          prediction_file=csv_out)
+    if predict_only:
+      return
     train_scores_list.append(train_score)
     valid_scores_list.append(valid_score)
     test_scores_list.append(test_score)
   else:
-    for h in range(fold_num):
+    for h in range(1, fold_num):
       train_score, valid_score, _, _ = model_functions[mode](
           all_dataset[h][0],
           all_dataset[h][1],
@@ -284,6 +301,7 @@ def run_analysis(_):
           seed=seed,
           model_dir=model_dir,
           no_concordance_index=no_concord,
+          tensorboard=tensorboard,
           no_r2=no_r2,
           plot=plot,
           aggregated_tasks=aggregated_tasks)
@@ -652,7 +670,26 @@ if __name__ == '__main__':
       '--intermediate_file',
       type=str,
       default='intermediate_cv.csv',
-      help='File name of the csv file storing the results for separate CV folds.')
+      help='File name of the csv file storing the results for separate CV folds.'
+  )
+  parser.add_argument(
+      '--predict_only',      
+      default=False,
+      help='True if only predicting is performed, no training.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--tensorboard',      
+      default=False,
+      help='True if storing the checkpoints.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--csv_out',
+      type=str,
+      default='./NCI60_data/predictions.csv',
+      help='File name of the csv file storing the prediction results.'
+  )
 
   FLAGS, unparsed = parser.parse_known_args()
   #pdb.set_trace()
