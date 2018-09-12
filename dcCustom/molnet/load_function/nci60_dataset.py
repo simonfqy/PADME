@@ -25,13 +25,13 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 def load_nci60(featurizer = 'Weave', cross_validation=False, test=False, 
   split='random', reload=True, K = 5, mode = 'regression', predict_cold = False, 
   cold_drug=False, cold_target=False, split_warm=False, filter_threshold=0,
-  prot_seq_dict=None): 
+  prot_seq_dict=None, oversampled=False): 
   
   data_to_train = 'tc'
   
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    file_name = "all_prot_intxn"
+    file_name = "AR_ER_intxn_s"
     
   elif mode == 'classification':   
     file_name = "restructured_bin"
@@ -51,13 +51,14 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
     if loaded:
       return tasks, all_dataset, transformers
 
+  # HACK: the following if-else block could be prone to errors.
   if data_to_train == "tc":
     loaded, _, transformers = dcCustom.molnet.load_toxcast(featurizer = featurizer, split= split, 
-      cross_validation=True, reload=True, mode = mode)
+      cross_validation=False, reload=True, mode = mode)
   else:
     # We assume there are only toxcast and kiba as the choice now.
     loaded, _, transformers = dcCustom.molnet.load_kiba(featurizer = featurizer, split= split, 
-      cross_validation=True, reload=True, mode = mode, split_warm=True, filter_threshold=6)
+      cross_validation=False, reload=True, mode = mode, split_warm=True, filter_threshold=6)
   
   assert loaded
   
@@ -86,6 +87,9 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
   }
   splitter = splitters[split]  
   
+  # HACK: We set frac_train to 1.0 because assume NCI60 dataset is for prediction only: there
+  # is no underlying truth. To predict all drug-target pairs, we need to let all samples be in
+  # the "training" set, though it is a misnomer.
   train, valid, test = splitter.train_valid_test_split(dataset, frac_train=1.0, 
     frac_valid=0.0, frac_test=0)
   all_dataset = (train, valid, test)

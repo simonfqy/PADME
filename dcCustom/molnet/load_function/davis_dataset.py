@@ -22,7 +22,8 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False,
-  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None): 
+  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None,
+  oversampled=False): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -76,12 +77,12 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
   
   if mode == 'regression':
     transformers = [
-          deepchem.trans.NormalizationTransformer(
+          dcCustom.trans.NormalizationTransformer(
               transform_y=True, dataset=dataset)
     ]
   elif mode == 'classification':
     transformers = [
-        deepchem.trans.BalancingTransformer(transform_w=True, dataset=dataset)
+        dcCustom.trans.BalancingTransformer(transform_w=True, dataset=dataset)
     ]
     
   print("About to transform data")

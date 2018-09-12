@@ -23,7 +23,8 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False, 
-  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None, currdir="./"): 
+  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None, currdir="./",
+  oversampled=False): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -31,7 +32,7 @@ def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split
 
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
-    file_name = "restructured.csv"
+    file_name = "restructured_oversampled.csv"
     
   elif mode == 'classification':   
     file_name = "restructured_bin.csv"
@@ -80,12 +81,12 @@ def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split
   
   if mode == 'regression':
     transformers = [
-          deepchem.trans.NormalizationTransformer(
+          dcCustom.trans.NormalizationTransformer(
               transform_y=True, dataset=dataset)
     ]
   elif mode == 'classification':
     transformers = [
-        deepchem.trans.BalancingTransformer(transform_w=True, dataset=dataset)
+        dcCustom.trans.BalancingTransformer(transform_w=True, dataset=dataset)
     ]
     
   print("About to transform data")
@@ -96,7 +97,7 @@ def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split
       'index': deepchem.splits.IndexSplitter(),
       'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold, cold_drug=cold_drug, 
         cold_target=cold_target, split_warm=split_warm, prot_seq_dict=prot_seq_dict,
-        threshold=filter_threshold),
+        threshold=filter_threshold, oversampled=oversampled),
       'scaffold': deepchem.splits.ScaffoldSplitter(),
       'butina': deepchem.splits.ButinaSplitter(),
       'task': deepchem.splits.TaskSplitter()
@@ -116,7 +117,7 @@ def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split
 
   else:
     # not cross validating, and not testing.
-    train, valid, test = splitter.train_valid_test_split(dataset, frac_valid=0.2,
+    train, valid, test = splitter.train_valid_test_split(dataset, frac_train=0.8, frac_valid=0.2,
       frac_test=0)
     all_dataset = (train, valid, test)
     if reload:
