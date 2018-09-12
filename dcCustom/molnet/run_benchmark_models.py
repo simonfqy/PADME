@@ -43,6 +43,7 @@ def model_regression(
             log_file=None,
             aggregated_tasks=[],
             predict_only=False,
+            restore_model=False,
             prediction_file=None):
   train_scores = {}
   valid_scores = {}
@@ -83,7 +84,7 @@ def model_regression(
         model_dir = model_dir,
         prot_desc_dict=prot_desc_dict,
         prot_desc_length=prot_desc_length,
-        restore_model=predict_only)
+        restore_model=restore_model)
         
   elif model_name == 'mpnn':
     batch_size = hyper_parameters['batch_size']
@@ -114,7 +115,7 @@ def model_regression(
         model_dir = model_dir,
         prot_desc_dict = prot_desc_dict,
         prot_desc_length = prot_desc_length,
-        restore_model=predict_only)
+        restore_model=restore_model)
   
   elif model_name == 'tf_regression':
     layer_sizes = hyper_parameters['layer_sizes']
@@ -150,7 +151,7 @@ def model_regression(
         model_dir = model_dir,
         prot_desc_dict=prot_desc_dict,
         prot_desc_length=prot_desc_length,
-        restore_model=predict_only)
+        restore_model=restore_model)
   
   elif model_name == 'weave_regression':
     batch_size = hyper_parameters['batch_size']
@@ -187,7 +188,7 @@ def model_regression(
       model_dir = model_dir,
       prot_desc_dict=prot_desc_dict,
       prot_desc_length=prot_desc_length,
-      restore_model=predict_only)
+      restore_model=restore_model)
   
   if predict_only:
     assert prediction_file is not None
@@ -203,14 +204,14 @@ def model_regression(
     per_task_metrics = False
   
   if nb_epoch is None:
-    opt_epoch = model.fit(train_dataset, valid_dataset, restore=False, 
+    opt_epoch = model.fit(train_dataset, valid_dataset, restore=restore_model, 
       metric=metric, direction=direction, early_stopping=early_stopping, no_r2=no_r2,
       evaluate_freq=evaluate_freq, patience = patience, transformers=transformers,
       per_task_metrics=per_task_metrics, tasks=tasks, verbose_search=verbose_search,
       log_file=log_file, aggregated_tasks=aggregated_tasks, model_name=model_name)
   else:
     opt_epoch = model.fit(train_dataset, valid_dataset, nb_epoch=nb_epoch,
-      restore=False, metric=metric, direction=direction, early_stopping=early_stopping, 
+      restore=restore_model, metric=metric, direction=direction, early_stopping=early_stopping, 
       evaluate_freq=evaluate_freq, patience = patience, transformers=transformers,
       per_task_metrics=per_task_metrics, tasks=tasks, verbose_search=verbose_search,
       log_file=log_file, aggregated_tasks=aggregated_tasks, model_name=model_name,
@@ -246,6 +247,9 @@ def model_regression(
 
   return train_scores, valid_scores, test_scores, opt_epoch
   
+
+# TODO: If you want to use this function, please update it according to model_regression()
+# function in every detail.
 def model_classification(
             train_dataset,
             valid_dataset,
@@ -273,8 +277,9 @@ def model_classification(
             log_file=None,            
             aggregated_tasks=[],
             predict_only=False,
+            restore_model=False,
             prediction_file=None):
-  # TODO: need to copy the code changes related to plotting from the function above.
+  
   train_scores = {}
   valid_scores = {}
   test_scores = {}
