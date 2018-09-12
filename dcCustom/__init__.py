@@ -15,7 +15,7 @@ import dcCustom.metrics
 import dcCustom.models
 #import dcCustom.nn
 import dcCustom.splits
-#import deepchem.trans
+import dcCustom.trans
 import dcCustom.utils
 #import deepchem.dock
 import dcCustom.molnet
