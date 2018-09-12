@@ -11,8 +11,8 @@ import warnings
 import pandas as pd
 import sklearn
 from deepchem.utils.save import log
-from deepchem.trans import undo_transforms
-from deepchem.metrics import from_one_hot
+from dcCustom.trans import undo_transforms
+from dcCustom.metrics import from_one_hot
 
 __author__ = "Bharath Ramsundar"
 __copyright__ = "Copyright 2016, Stanford University"
