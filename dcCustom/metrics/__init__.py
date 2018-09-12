@@ -402,7 +402,9 @@ class Metric(object):
       # In this case we want to plot, but haven't done so for the aggregated tasks. Doing it here.
       for meta_task_name in meta_task_list:
         min_list = []
-        max_list = []        
+        max_list = []
+        y_pred_meta = np.array([])
+        y_true_meta = np.array([])      
         for pair in metatask_to_task[meta_task_name]:
           task_ind = pair[0]
           y_task = y_true[:, task_ind]
@@ -412,25 +414,32 @@ class Metric(object):
             y_pred_task = y_pred[:, task_ind, :]
           w_task = w[:, task_ind]
           y_true_task, y_pred_task = self.get_y_vectors(y_task, y_pred_task, w_task)
-
-          plt.plot(y_pred_task, y_true_task, 'b.')              
+          
+          plt.plot(y_pred_task, y_true_task, 'b.') 
+        
+          y_pred_meta = np.append(y_pred_meta, y_pred_task)
+          y_true_meta = np.append(y_true_meta, y_true_task)          
           y_vector = np.append(y_true_task, y_pred_task)
           min_list.append(np.amin(y_vector))
           max_list.append(np.amax(y_vector))
         min_value = np.amin(np.array(min_list)) 
         max_value = np.amax(np.array(max_list))         
-        plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k')        
-        plt.xlabel("predicted value")   
-        plt.ylabel("true value")
+        plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k')      
+        plt.xlabel("Predicted value")
+        plt.ylabel("True value") 
         if is_training_set:
           meta_task_name = meta_task_name + "_trainset"
+        else:
+          np.save("plots/y_pred_" + meta_task_name, y_pred_meta)
+          np.save("plots/y_true_" + meta_task_name, y_true_meta)
         if model_name is not None:
           meta_task_name = model_name + "_" + meta_task_name
         plot_time = strftime("%Y_%m_%d_%H_%M", gmtime())
         image_name = "plots/" + meta_task_name + plot_time + ".png"
         plt.savefig(image_name)
         plt.close()
-
+        
+        
     if self.arithmetic_mean:
       # weighted_metrics = []
       # for task in range(n_tasks):
@@ -584,8 +593,8 @@ class Metric(object):
         max_value = np.amax(y_vector)        
         plt.plot([min_value-1, max_value + 1], [min_value-1, max_value + 1], 'k')
         
-        plt.xlabel("predicted value")
-        plt.ylabel("true value")        
+        plt.xlabel("Predicted value")
+        plt.ylabel("True value")        
         i = 0
         for some_metric in all_metrics:
           if some_metric.metric.__name__ in metric_value_dict:            
@@ -595,24 +604,24 @@ class Metric(object):
         plot_time = strftime("%Y_%m_%d_%H_%M", gmtime())
         if is_training_set:
           task_name = task_name + "_trainset"
+        else:
+          np.save("plots/y_pred_k", y_pred)
+          np.save("plots/y_true_k", y_true)
+          np.save("plots/residuals_k", residuals)
         if model_name is not None:
           task_name = model_name + "_" + task_name
         image_name = "plots/" + task_name + plot_time + ".png"
         plt.savefig(image_name)
         plt.close()
 
-        plt.plot(y_pred, residuals, 'r.')
-        plt.plot([min_value - 1, max_value + 1], [0, 0], 'k')        
-        plt.xlabel("predicted value")
-        plt.ylabel("residuals")  
-        task_name = "res_" + task_name
-        image_name2 = "plots/" + task_name + plot_time + ".png"
-        plt.savefig(image_name2)
-        plt.close()
-
-        np.save("plots/y_pred", y_pred)
-        np.save("plots/y_true", y_true)
-        np.save("plots/residuals", residuals)
+        # plt.plot(y_pred, residuals, 'r.')
+        # plt.plot([min_value - 1, max_value + 1], [0, 0], 'k')        
+        # plt.xlabel("Predicted value")
+        # plt.ylabel("Residuals")  
+        # task_name = "res_" + task_name
+        # image_name2 = "plots/" + task_name + plot_time + ".png"
+        # plt.savefig(image_name2)
+        # plt.close()
 
     except (AssertionError, ValueError) as e:
       warnings.warn("Error calculating metric %s: %s" % (self.name, e))
