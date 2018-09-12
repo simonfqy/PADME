@@ -18,7 +18,7 @@ from dcCustom.models.models import Model
 from dcCustom.models.tensorgraph.layers import InputFifoQueue, Label, Feature, \
   Weights, Constant, Dense
 from deepchem.models.tensorgraph.optimizers import Adam
-from deepchem.trans import undo_transforms
+from dcCustom.trans import undo_transforms
 from dcCustom.utils.evaluate import GeneratorEvaluator
 
 logger = logging.getLogger(__name__)
@@ -519,6 +519,7 @@ class TensorGraph(Model):
             args=(self, generator, self._get_tf("Graph"), self.session,
                   n_enqueued, final_sample))
         enqueue_thread.start()
+      # batch_ind = 1
       for feed_dict in self._create_feed_dicts(generator, False):
         if self.queue_installed:
           # Don't let this thread get ahead of the enqueue thread, since if
@@ -532,6 +533,8 @@ class TensorGraph(Model):
             break
         n_samples += 1
         feed_results = self.session.run(tensors, feed_dict=feed_dict)
+        # if batch_ind >= 84:
+        #   pdb.set_trace()
         if len(feed_results) > 1:
           if len(transformers):
             raise ValueError("Does not support transformations "
@@ -541,10 +544,12 @@ class TensorGraph(Model):
           feed_results = [result]
         for ind, result in enumerate(feed_results):
           results[ind].append(result)
-
+        # batch_ind += 1
+      #pdb.set_trace()
       final_results = []
       for result_list in results:
         final_results.append(np.concatenate(result_list, axis=0))
+      # pdb.set_trace()
       # If only one output, just return array
       if len(final_results) == 1:
         return final_results[0]
@@ -605,6 +610,7 @@ class TensorGraph(Model):
     mol_ids = dataset.ids
     proteins = dataset.X[:, 1]    
     y_preds = np.reshape(y_preds, (len(y_preds), n_tasks))
+    #pdb.set_trace()
     assert len(y_preds) == len(mol_ids)
     with open(csv_out, "w") as csvfile:
       csvwriter = csv.writer(csvfile)
@@ -637,7 +643,7 @@ class TensorGraph(Model):
     -------
     results: numpy ndarray or list of numpy ndarrays
     """
-    generator = self.default_generator(dataset, predict=True, pad_batches=False)    
+    generator = self.default_generator(dataset, predict=True, pad_batches=False) 
     if csv_out is not None:
       self.restore()
       predictions = self.predict_on_generator(generator, transformers, outputs)

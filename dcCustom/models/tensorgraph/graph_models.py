@@ -8,7 +8,7 @@ import pdb
 from dcCustom.data import NumpyDataset, pad_features
 from dcCustom.feat.graph_features import ConvMolFeaturizer
 from dcCustom.feat.mol_graphs import ConvMol
-from deepchem.metrics import to_one_hot
+from dcCustom.metrics import to_one_hot
 from dcCustom.models.tensorgraph.graph_layers import WeaveGather, \
     DTNNEmbedding, DTNNStep, DTNNGather, DAGLayer, WeaveLayerFactory, \
     DAGGather, DTNNExtract, MessagePassing, SetGather
@@ -18,7 +18,7 @@ from dcCustom.models.tensorgraph.layers import Layer, Dense, SoftMax, \
     Flatten, GraphCNN, GraphCNNPool, ReduceMean, ReduceSum, Exp
 from dcCustom.models.tensorgraph.layers import L2Loss, Label, Weights, Feature, BatchNorm
 from dcCustom.models.tensorgraph.tensor_graph import TensorGraph
-from deepchem.trans import undo_transforms
+from dcCustom.trans import undo_transforms
 from dcCustom.feat import Protein
 
 class TrimGraphOutput(Layer):
@@ -709,17 +709,17 @@ class GraphConvModel(TensorGraph):
         in_layers=[batch_norm3, self.degree_slice, self.membership] +
         self.deg_adjs)
     readout = Dropout(self.dropout_prob, in_layers=[readout])
-    
+    n_tasks = self.n_tasks
+    weights = Weights(shape=(None, n_tasks))
     prot_desc = Dropout(self.dropout_prob, in_layers = [self.prot_desc])
-    readout = TrimGraphOutput([readout, prot_desc])
+    readout = TrimGraphOutput([readout, weights])
+    prot_desc = TrimGraphOutput([prot_desc, weights])
     recent = Concat(in_layers=[readout, prot_desc])
     for _ in range(self.num_dense_layer):
       dense_combined = Dense(out_channels=self.dense_cmb_layer_size, activation_fn=tf.nn.relu,
         in_layers=[recent])
       recent = BatchNormalization(epsilon=1e-5, in_layers=[dense_combined])
 
-    n_tasks = self.n_tasks
-    weights = Weights(shape=(None, n_tasks))
     if self.mode == 'classification':
       n_classes = self.n_classes
       labels = Label(shape=(None, n_tasks, n_classes))
