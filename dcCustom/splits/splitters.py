@@ -58,7 +58,7 @@ class Splitter(object):
     """
 
   def __init__(self, verbose=False, split_cold=False, cold_drug=False, cold_target=False,
-    prot_seq_dict=None, split_warm=False, threshold=0):
+    prot_seq_dict=None, split_warm=False, threshold=0, oversampled=False):
     """Creates splitter object."""
     self.verbose = verbose
     self.split_cold = split_cold
@@ -67,6 +67,7 @@ class Splitter(object):
     self.split_warm = split_warm
     self.prot_seq_dict = prot_seq_dict
     self.threshold = threshold
+    self.oversampled = oversampled
 
   def k_fold_split(self, dataset, k, directories=None, **kwargs):
     """
@@ -122,7 +123,6 @@ class Splitter(object):
       self.split_warm = False # Only useful in the first time.
       self.threshold = 0 # Filtering is done after the first split.
       cv_dataset = rem_dataset.select(fold_inds, select_dir=cv_dir)
-      cv_datasets.append(cv_dataset)
       rem_dataset = rem_dataset.select(rem_inds)
 
       train_ds_to_merge = filter(lambda x: x is not None,
@@ -134,8 +134,13 @@ class Splitter(object):
       update_train_base_merge = filter(lambda x: x is not None,
                                        [train_ds_base, cv_dataset])
       train_ds_base = DiskDataset.merge(update_train_base_merge)
+      if self.oversampled:
+        cv_dataset = cv_dataset.get_unique_pairs()
+        #pdb.set_trace()      
+      cv_datasets.append(cv_dataset)
     return list(zip(train_datasets, cv_datasets))
 
+  # HACK: I only did oversampled dataset handling for k-fold split.
   def train_valid_test_split(self,
                              dataset,
                              train_dir=None,
@@ -166,10 +171,11 @@ class Splitter(object):
     if test_dir is None:
       test_dir = tempfile.mkdtemp()
     train_dataset = dataset.select(train_inds, train_dir)
-    if frac_valid != 0:
-      valid_dataset = dataset.select(valid_inds, valid_dir)
-    else:
-      valid_dataset = None
+    # if frac_valid != 0:
+    #   valid_dataset = dataset.select(valid_inds, valid_dir)
+    # else:
+    #   valid_dataset = None
+    valid_dataset = dataset.select(valid_inds, valid_dir)
     test_dataset = dataset.select(test_inds, test_dir)
 
     return train_dataset, valid_dataset, test_dataset
@@ -714,9 +720,14 @@ class RandomSplitter(Splitter):
       return (shuffled[:train_cutoff], shuffled[train_cutoff:valid_cutoff],
               shuffled[valid_cutoff:])
 
+    if self.oversampled:
+      # HACK: I haven't implemented the oversampled splitting under these circumstances. It is
+      # used as an early failure protection.
+      assert not (self.split_cold or self.split_warm or self.threshold > 0)
+
     # Only execute when need to perform filtering or doing some specific splitting.
-    # Note that this also applies to the warm splitting of cross-validation after the initial split.
-    #assert self.prot_seq_dict is not None
+    # In warm splitting of cross-validation after the initial split, the program returns from
+    # the last if-block.
     all_entry_id = set(range(num_datapoints))
     entries_for_training = set()
     num_training = int(num_datapoints * frac_train)
@@ -728,6 +739,7 @@ class RandomSplitter(Splitter):
     mol_list = []
     prot_list = []
     entry_id_to_pair = {} 
+    pair_to_entry_id = {}
 
     for (X, _, _, _) in dataset.itersamples():      
       mol = X[0]
@@ -744,6 +756,9 @@ class RandomSplitter(Splitter):
 
       pair = (mol, prot)
       entry_id_to_pair[element_id] = pair
+      if pair not in pair_to_entry_id:
+        pair_to_entry_id[pair] = set()
+      pair_to_entry_id[pair].add(element_id)
       element_id += 1      
     print("element_id: ", element_id)
     print("len(mol_entries): ", len(mol_entries))
@@ -812,7 +827,8 @@ class RandomSplitter(Splitter):
       mol_list = list(mol_set)   
       prot_list = list(prot_set) 
     
-    # All the special splitting schemes here are for Cross-Validation ONLY.
+    # All the special splitting schemes here are intended for Cross-Validation. I have
+    # not tested them on ordinary train-test splits.
     if self.split_cold:
       # We would need to split the dataset into cold-drugs and cold-targets.      
       while True:
@@ -840,9 +856,9 @@ class RandomSplitter(Splitter):
         if len(entries_for_training) >= num_training:
           break
 
-    elif self.split_warm:
-      assert self.threshold > 0
-      
+    elif self.split_warm:      
+      # The word "preserve" here actually means "preserved for other CV splits", in other words,
+      # it is referring to the validation fold for the current split.
       entries_preserved = set()
       unassigned_entries = set()      
       for molecule in mol_list:
@@ -1013,6 +1029,21 @@ class RandomSplitter(Splitter):
           entries_for_training.update(entity_entries[entity_chosen])
           del entity_entries[entity_chosen]
           
+        if len(entries_for_training) >= num_training:
+          break
+
+    elif self.oversampled:
+      pair_list = list(entity_entries.keys())
+      while True:
+        pair_chosen = random.choice(pair_list)
+        if len(entries_for_training.union(pair_to_entry_id[pair_chosen])) > num_training:
+          new_elements = pair_to_entry_id[pair_chosen]
+          num_to_choose = num_training - len(entries_for_training)
+          new_elements = random.sample(new_elements, num_to_choose)
+          entries_for_training.update(new_elements)  
+        else:
+          entries_for_training.update(pair_to_entry_id[pair_chosen])
+          pair_list.remove(pair_chosen)
         if len(entries_for_training) >= num_training:
           break
 
