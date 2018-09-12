@@ -48,6 +48,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       ],
       log_file='GPhypersearch.log',
       mode='classification',
+      tensorboard=True,
       no_concordance_index=False,
       no_r2=False,
       plot=False,
@@ -209,7 +210,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
       print(hyper_parameters)
       nonlocal model_dir
       
-      #pdb.set_trace()
+      pdb.set_trace()
       # Run benchmark
       with open(log_file, 'a') as f:
         # Record hyperparameters
@@ -236,6 +237,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
               patience=patience,
               direction=direction,
               model_dir=model_dir,
+              tensorboard=tensorboard,
               no_concordance_index=no_concordance_index,
               verbose_search=verbose_search,
               log_file=log_file,
@@ -259,6 +261,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
               patience=patience,
               direction=direction,
               model_dir=model_dir,
+              tensorboard=tensorboard,
               no_concordance_index=no_concordance_index,
               verbose_search=verbose_search,
               log_file=log_file,
@@ -387,6 +390,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             patience=patience,
             direction=direction,
             model_dir=model_dir,
+            tensorboard=tensorboard,
             no_concordance_index=no_concordance_index,
             verbose_search=verbose_search,
             log_file=log_file,
@@ -410,6 +414,7 @@ class GaussianProcessHyperparamOpt(HyperparamOpt):
             patience=patience,
             direction=direction,
             model_dir=model_dir,
+            tensorboard=tensorboard,
             no_concordance_index=no_concordance_index,
             verbose_search=verbose_search,
             log_file=log_file,
