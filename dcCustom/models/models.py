@@ -21,7 +21,7 @@ import sklearn
 from sklearn.base import BaseEstimator
 
 from dcCustom.data import Dataset, pad_features
-from deepchem.trans import undo_transforms
+from dcCustom.trans import undo_transforms
 from deepchem.utils.save import load_from_disk
 from deepchem.utils.save import save_to_disk
 from deepchem.utils.save import log
