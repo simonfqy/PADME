@@ -690,7 +690,7 @@ class DiskDataset(Dataset):
     def iterate(dataset):
       for _, row in dataset.metadata_df.iterrows():
         X = np.array(load_from_disk(os.path.join(dataset.data_dir, row['X'])))
-        #pdb.set_trace()
+        
         ids = np.array(
             load_from_disk(os.path.join(dataset.data_dir, row['ids'])),
             dtype=object)
@@ -1240,6 +1240,35 @@ class DiskDataset(Dataset):
       y = load_from_disk(os.path.join(self.data_dir, row['ids']))
       total += len(y)
     return total
+
+  def get_unique_pairs(self):
+    X_vector = self.X
+    y_vector = self.y
+    w_vector = self.w
+    ids_vector = self.ids
+    unique_pair_inds = []
+    pair_set = set()
+    for i, pair in enumerate(X_vector):
+      pair = tuple(pair)
+      if pair not in pair_set:
+        unique_pair_inds.append(i)
+        pair_set.add(pair)
+    X = X_vector[unique_pair_inds]
+    y = y_vector[unique_pair_inds]
+    w = w_vector[unique_pair_inds]
+    ids = ids_vector[unique_pair_inds]
+    temp_dir = tempfile.mkdtemp()
+    filtered_dataset = DiskDataset.from_numpy(X,
+                 y,
+                 w=w,
+                 ids = ids,                 
+                 tasks=self.tasks,
+                 data_dir=temp_dir)
+    shutil.rmtree(self.data_dir)
+    shutil.move(temp_dir, self.data_dir)
+    self.metadata_df = filtered_dataset.metadata_df
+    self.save_to_disk()
+    return self
 
   def get_shape(self):
     """Finds shape of dataset."""
