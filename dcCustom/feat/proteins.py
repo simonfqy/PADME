@@ -43,7 +43,6 @@ class Protein(object):
   def __hash__(self):
     assert self.sequence is not None
     return hash(self.sequence)
-
     
   def get_name(self):
     return (self.source, self.name)
