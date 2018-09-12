@@ -87,15 +87,18 @@ def run_analysis(_):
   plot = FLAGS.plot
   aggregate = FLAGS.aggregate
   predict_only = FLAGS.predict_only
+  restore_model = FLAGS.restore_model
   csv_out = FLAGS.csv_out
   tensorboard = FLAGS.tensorboard
+  oversampled = FLAGS.oversampled
   
   if predict_only:
     hyper_param_search = False
     cross_validation = False
     plot = False
     early_stopping = False
-    test = False                
+    test = False 
+    restore_model = True               
   else:  
     assert (predict_cold + cold_drug + cold_target + split_warm) <= 1
 
@@ -106,7 +109,6 @@ def run_analysis(_):
     if thresholding:
       mode = 'reg-threshold'
   direction = False
-  #pdb.set_trace()
 
   if mode == 'regression':
     metrics = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean, 
@@ -169,7 +171,7 @@ def run_analysis(_):
                                                   K = fold_num, mode=mode, predict_cold=predict_cold,
                                                   cold_drug=cold_drug, cold_target=cold_target,
                                                   split_warm=split_warm, prot_seq_dict=prot_seq_dict,
-                                                  filter_threshold=filter_threshold)
+                                                  filter_threshold=filter_threshold, oversampled=oversampled)
   else:
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
@@ -177,7 +179,7 @@ def run_analysis(_):
                                                   predict_cold=predict_cold, cold_drug=cold_drug, 
                                                   cold_target=cold_target, split_warm=split_warm,
                                                   filter_threshold=filter_threshold, 
-                                                  prot_seq_dict=prot_seq_dict)
+                                                  prot_seq_dict=prot_seq_dict, oversampled=oversampled)
     
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
@@ -275,6 +277,7 @@ def run_analysis(_):
           aggregated_tasks=aggregated_tasks,
           tensorboard=tensorboard,
           predict_only=predict_only,
+          restore_model=restore_model,
           prediction_file=csv_out)
     if predict_only:
       return
@@ -282,7 +285,7 @@ def run_analysis(_):
     valid_scores_list.append(valid_score)
     test_scores_list.append(test_score)
   else:
-    for h in range(1, fold_num):
+    for h in range(fold_num):
       train_score, valid_score, _, _ = model_functions[mode](
           all_dataset[h][0],
           all_dataset[h][1],
@@ -304,7 +307,8 @@ def run_analysis(_):
           tensorboard=tensorboard,
           no_r2=no_r2,
           plot=plot,
-          aggregated_tasks=aggregated_tasks)
+          aggregated_tasks=aggregated_tasks,
+          restore_model=restore_model)
       # TODO: I made the decision to force disable early stopping for cross validation here,
       # not quite sure whether this is right.
       train_scores_list.append(train_score)
@@ -679,6 +683,14 @@ if __name__ == '__main__':
       action='store_true'
   )
   parser.add_argument(
+      '--restore_model',      
+      default=False,
+      help='True if restoring model stored in the model_dir. If you want to directly use the \
+        trained model without any modification, you MUST set the "nb_epoch" parameter to 0. \
+        Note that if --predict_only parameter is true, restore_model is set to true.',
+      action='store_true'
+  )
+  parser.add_argument(
       '--tensorboard',      
       default=False,
       help='True if storing the checkpoints.',
@@ -689,6 +701,13 @@ if __name__ == '__main__':
       type=str,
       default='./NCI60_data/predictions.csv',
       help='File name of the csv file storing the prediction results.'
+  )
+  parser.add_argument(
+      '--oversampled',      
+      default=False,
+      help='Indicating whether the oversampled dataset was used for training and/or \
+        cross-validation.',
+      action='store_true'
   )
 
   FLAGS, unparsed = parser.parse_known_args()
