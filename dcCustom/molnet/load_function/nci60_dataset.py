@@ -27,21 +27,33 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
   cold_drug=False, cold_target=False, split_warm=False, filter_threshold=0,
   prot_seq_dict=None, oversampled=False): 
   
-  data_to_train = 'tc'
+  #data_to_train = 'tc'
+  data_to_train = 'davis'
   
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
     file_name = "AR_ER_intxn_s"
+    # substitute file_name with the template prediction file you have. For example, if your
+    # data_to_train is 'davis', you should have a "_davis" as the suffix of your template
+    # prediction file name, like "restructured_template_davis.csv"; in this case the file_name 
+    # variable should be "restructured_template".
     
   elif mode == 'classification':   
     file_name = "restructured_bin"
 
   file_name = file_name + "_" + data_to_train + '.csv'
-  data_dir = "NCI60_data/"
+  #data_dir = "NCI60_data/"
+  data_dir = "davis_data/"
+  # HACK: The last line is only temporary.
   dataset_file = os.path.join(data_dir, file_name)
   df = pd.read_csv(dataset_file, header = 0, index_col=False)
   headers = list(df)
-  tasks = headers[:-3]
+  #tasks = headers[:-3]
+  # I commented the last line out to make it less prone to errors, should the header orders change.
+  headers.remove("proteinName")
+  headers.remove("protein_dataset")
+  headers.remove("smiles")
+  tasks = headers
   
   if reload:
     delim = "_" + data_to_train + "/"    
@@ -53,12 +65,17 @@ def load_nci60(featurizer = 'Weave', cross_validation=False, test=False,
 
   # HACK: the following if-else block could be prone to errors.
   if data_to_train == "tc":
-    loaded, _, transformers = dcCustom.molnet.load_toxcast(featurizer = featurizer, split= split, 
+    loaded, _, transformers = dcCustom.molnet.load_toxcast(featurizer = featurizer, split=split, 
       cross_validation=False, reload=True, mode = mode)
-  else:
-    # We assume there are only toxcast and kiba as the choice now.
+  elif data_to_train == "davis":
+    loaded, _, transformers = dcCustom.molnet.load_davis(featurizer = featurizer, split=split, 
+      cross_validation=True, reload=True, mode = mode, filter_threshold=0)
+    # NOTE: tweak the parameters such that it suits your use case.
+  elif data_to_train == "kiba":    
     loaded, _, transformers = dcCustom.molnet.load_kiba(featurizer = featurizer, split= split, 
       cross_validation=False, reload=True, mode = mode, split_warm=True, filter_threshold=6)
+  else:
+    assert False
   
   assert loaded
   
