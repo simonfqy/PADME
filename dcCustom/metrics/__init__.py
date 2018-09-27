@@ -605,9 +605,9 @@ class Metric(object):
         if is_training_set:
           task_name = task_name + "_trainset"
         else:
-          np.save("plots/y_pred_k", y_pred)
-          np.save("plots/y_true_k", y_true)
-          np.save("plots/residuals_k", residuals)
+          np.save("plots/y_pred", y_pred)
+          np.save("plots/y_true", y_true)
+          np.save("plots/residuals", residuals)
         if model_name is not None:
           task_name = model_name + "_" + task_name
         image_name = "plots/" + task_name + plot_time + ".png"
