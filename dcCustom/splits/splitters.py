@@ -1033,7 +1033,7 @@ class RandomSplitter(Splitter):
           break
 
     elif self.oversampled:
-      pair_list = list(entity_entries.keys())
+      pair_list = list(pair_to_entry_id.keys())
       while True:
         pair_chosen = random.choice(pair_list)
         if len(entries_for_training.union(pair_to_entry_id[pair_chosen])) > num_training:
