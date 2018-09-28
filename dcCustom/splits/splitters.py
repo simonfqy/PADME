@@ -1033,17 +1033,18 @@ class RandomSplitter(Splitter):
           break
 
     elif self.oversampled:
-      pair_list = list(pair_to_entry_id.keys())
+      print("len(pair_to_entry_id): ", len(pair_to_entry_id))
       while True:
-        pair_chosen = random.choice(pair_list)
+        pair_chosen = random.choice(list(pair_to_entry_id.keys()))
         if len(entries_for_training.union(pair_to_entry_id[pair_chosen])) > num_training:
-          new_elements = pair_to_entry_id[pair_chosen]
+          new_elements = pair_to_entry_id[pair_chosen].difference(entries_for_training)
           num_to_choose = num_training - len(entries_for_training)
           new_elements = random.sample(new_elements, num_to_choose)
           entries_for_training.update(new_elements)  
         else:
-          entries_for_training.update(pair_to_entry_id[pair_chosen])
-          pair_list.remove(pair_chosen)
+          new_elements = pair_to_entry_id[pair_chosen].difference(entries_for_training)
+          entries_for_training.update(new_elements)
+          del pair_to_entry_id[pair_chosen]
         if len(entries_for_training) >= num_training:
           break
 
