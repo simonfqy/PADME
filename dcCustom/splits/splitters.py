@@ -711,7 +711,7 @@ class RandomSplitter(Splitter):
     assert (self.split_cold + self.cold_drug + self.cold_target + self.split_warm) <= 1
     
     if not (self.split_cold or self.cold_drug or self.cold_target or 
-      self.split_warm) and self.threshold <= 0:
+      self.split_warm or self.oversampled) and self.threshold <= 0:
       # This is the case where you are not performing filtering and doing some general random
       # splitting.
       train_cutoff = int(frac_train * num_datapoints)
