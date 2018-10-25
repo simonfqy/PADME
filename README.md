@@ -1,5 +1,5 @@
 # PADME: A Deep Learning-Based framework for Drug-Target Interaction Prediction 
-This is the repository containing the source code for my Master's thesis research, namely predicting drug-target interaction using Deep Neural Networks. The name PADME stands for "Protein And Drug Molecule interaction prEdiction", which also happened to be the heroine of Star Wars Prequel Trilogy. 
+This is the repository containing the source code for my Master's thesis research, namely predicting drug-target interaction using Deep Neural Networks. The name PADME stands for "Protein And Drug Molecule interaction prEdiction", which also happened to be the heroine of Star Wars Prequel Trilogy. The paper can be found here: https://arxiv.org/abs/1807.09741
 
 It currently depends on a version of DeepChem Python package released in November 2017. I will need to make major modifications to it such that it would be compatible with the current version of DeepChem after I am done with my first version of the current paper. The `dcCustom` folder is a package, inheriting some classes from DeepChem. Some of the implementations are customized, so I named it dcCustom, which means "Customized version of DeepChem". 
 
