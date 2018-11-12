@@ -20,20 +20,26 @@ import dcCustom
 import scipy
 from dcCustom.feat import Protein
 from dcCustom.metrics import concordance_index
+from rdkit import Chem
+from rdkit import DataStructs
+from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import Draw
+from rdkit.Chem.Fingerprints import FingerprintMols
+
 
 AR_list = [('toxcast', 'P10275'), ('toxcast', 'O97775'), ('toxcast', 'P15207')]
 AR_list_s = [('toxcast', 'P10275')]
 ER_list = [('toxcast', 'P03372'), ('toxcast', 'P19785'), ('toxcast', 'P49884'), 
   ('toxcast', 'Q92731')]
 ER_list_s = [('toxcast', 'P03372')]
-# AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
-# AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
+AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
 # AR_toxcast_codes = ['6620', '8110', '8010']
 # AR_antagonist_score_coef = [1, 0.5, 0.5]
 #AR_antagonist_score_coef = [1.] + [0.]*8
 
-AR_toxcast_codes = ['6620', '7100', '7200', '3100', '7300', '8100', '8000']
-AR_agonist_score_coef = [1, 0.5, 0.5, 1, 1/3, 1/3, 1/3]
+# AR_toxcast_codes = ['6620', '7100', '7200', '3100', '7300', '8100', '8000']
+# AR_agonist_score_coef = [1, 0.5, 0.5, 1, 1/3, 1/3, 1/3]
 
 PROT_desc_path_list = ['../davis_data/prot_desc.csv', '../metz_data/prot_desc.csv', 
     '../KIBA_data/prot_desc.csv', '../full_toxcast/prot_desc.csv']
@@ -354,12 +360,95 @@ def get_avg(input_files_list = [], output_file_name = 'avg_ar_tc.csv', exclude_p
         'protein_dataset': triplet[2], 'avg_score': avg_val_list[i]}
       writer.writerow(out_line)       
   
+
+def get_highest_similarity_for_mol(fp, fp_list_to_compare):
+  max_sim = 0
+  for fp_comp in fp_list_to_compare:
+    sim = DataStructs.FingerprintSimilarity(fp, fp_comp)
+    if sim == 1.0:
+      return sim
+    if sim > max_sim:
+      max_sim = sim
+  return max_sim
+
+
+def get_highest_similarity(input_file, output_file, comparison_file='../full_toxcast/restructured.csv'):
+  df_avg = pd.read_csv(input_file, header=0, index_col=False)
+  df_avg = df_avg.head(1500)
+  smiles_list = df_avg['smiles']
+  avg_scores = df_avg['avg_score']
+  # default_mol = Chem.MolFromSmiles('CCCC')
+  # default_fp = rdMolDescriptors.GetMorganFingerprintAsBitVect(default_mol, 2, nBits=1024)
+  # mol2 = Chem.MolFromSmiles('CCCC')
+  # fp2 = rdMolDescriptors.GetMorganFingerprintAsBitVect(mol2, 2, nBits=1024)
+  # sim = DataStructs.FingerprintSimilarity(default_fp, fp2)
+  df_comparison = pd.read_csv(comparison_file, header=0, index_col=False)
+  #df_comparison = df_comparison.head(100)
+  comparison_smiles_list = df_comparison['smiles']
+  comparison_fp_list = []
+  similarity_list = []
+  for c_smiles in comparison_smiles_list:
+    comp_mol = Chem.MolFromSmiles(c_smiles)
+    #comp_fp = rdMolDescriptors.GetMorganFingerprintAsBitVect(comp_mol, 2, nBits=1024)
+    comp_fp = FingerprintMols.FingerprintMol(comp_mol)
+    comparison_fp_list.append(comp_fp)
+
+  for i, smiles in enumerate(smiles_list):
+    mol_to_test = Chem.MolFromSmiles(smiles)
+    #fp_to_test = rdMolDescriptors.GetMorganFingerprintAsBitVect(mol_to_test, 2, nBits=1024)
+    fp_to_test = FingerprintMols.FingerprintMol(mol_to_test)
+    similarity_list.append(get_highest_similarity_for_mol(fp_to_test, comparison_fp_list))
+    if i%500 == 0:
+      print(i)
+
+  with open(output_file, 'w', newline='') as csvfile:
+    fieldnames = ['smiles', 'avg_score', 'max_similarity']
+    writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
+    writer.writeheader()
+    for i, smiles in enumerate(smiles_list):
+      out_line = {'smiles': smiles, 'avg_score': avg_scores[i], 
+        'max_similarity': similarity_list[i]}
+      writer.writerow(out_line)  
+ 
+
+def filter_similarity(input_file, output_file, image_folder='./mol_images', threshold=0.85, 
+  draw_2d_image=True, limit=False, limit_lines=120):
+  # Both input_file and output_file should be csv files.
+  df_sim = pd.read_csv(input_file, header=0, index_col=False)
+  smiles_array = df_sim['smiles']
+  scores_array = df_sim['avg_score']
+  similarity_array = df_sim['max_similarity']
+  selected_indices_list = []
+  for i, sim in enumerate(similarity_array):
+    if sim >= threshold:
+      continue
+    selected_indices_list.append(i)
+    if draw_2d_image:
+      source_line_num = i + 2
+      target_line_num = len(selected_indices_list) + 1
+      mol = Chem.MolFromSmiles(smiles_array[i])
+      Draw.MolToFile(mol, 
+        image_folder + '/' + str(source_line_num) + '_' + str(target_line_num) + '.png',
+        size=(700,700))
+
+  with open(output_file, 'w', newline='') as csvfile:
+    fieldnames = ['smiles', 'avg_score', 'max_similarity']
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writeheader()
+    for i, ind in enumerate(selected_indices_list):
+      if limit and i + 1 > limit_lines:
+        break
+      out_line = {'smiles': smiles_array[ind], 'avg_score': scores_array[ind], 
+        'max_similarity': similarity_array[ind]}
+      writer.writerow(out_line)
+
   
 def calculate_mean_activity(pred_file, top_n_list = [15000, 1000, 100], exclude_prot=[],
-  out_file='mean_logGI50.csv', threshold=2000):
+  out_file='mean_logGI50_breast.csv', threshold=6000):
+
   df_avg = pd.read_csv(pred_file, header=0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
-  panel = 'Prostate'
+  panel = 'Breast'
   cell_lines_to_pairs = {}
   cline_to_topn_list = {}
   cline_and_topn_to_value_list = {}
@@ -1290,7 +1379,7 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
   orig_invalid_val = 1000000
   new_invalid_val = 1000
   panel_to_use = "Breast"
-  cell_line_to_use = ["MDA-MB-231/ATCC"]
+  cell_line_to_use = ["HS 578T"]
   uniprot_ID = 'P10275'
   invalid_to_canon_smiles = get_canonical_smiles_dict()
   tc_code_and_protID_to_assays = get_toxcast_code_dict()
@@ -1387,14 +1476,15 @@ def plot_real_ar_to_gi(AR_toxcast_codes=[], plot_individually = False,
       plt.close()
  
 
-def calculate_mean_for_observed_ar(top_n_list = [20, 10], out_file='true_ar_mean_logGI50.csv', 
-  threshold=30, cell_lines = ['DU-145', 'PC-3'], AR_toxcast_codes=[], AR_score_coef=[]):
+def calculate_mean_for_observed_ar(top_n_list = [20, 10], out_file='true_ar_mean_logGI50_breast.csv', 
+  threshold=30, cell_lines = ['BT-549', 'HS 578T', 'MCF7', 'MDA-MB-231/ATCC', 'T-47D'], 
+  AR_toxcast_codes=[], AR_score_coef=[]):
 
   orig_invalid_val = 1000000
   new_invalid_val = 1000
   df_observe = pd.read_csv('../full_toxcast/Assays_smiles_INCHI.csv', header = 0, index_col=False)
   df_nci60 = pd.read_csv('NCI60_bio.csv', header=0, index_col=False)
-  panel_to_use = 'Prostate'
+  panel_to_use = 'Breast'
   uniprot_ID = 'P10275'
   invalid_to_canon_smiles = get_canonical_smiles_dict()
   tc_code_and_protID_to_assays = get_toxcast_code_dict()
@@ -1472,15 +1562,21 @@ if __name__ == "__main__":
   # produce_dataset(dataset_used=dataset, prot_desc_path_list=['../full_toxcast/prot_desc.csv'], 
   #   get_all_compounds=True, take_mol_subset=False, prot_pairs_to_choose=AR_list_s + ER_list_s)
   #produce_dataset(dataset_used=dataset, output_prefix="all_prot_intxn")
-  # synthesize_ranking('preds_arer_kiba_graphconv.csv', 'ordered_arer_kiba_gc.csv', weigh_by_occurrence=True,
-  #   AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
-  # synthesize_ranking('preds_arer_tc_ecfp.csv', 'ordered_arer_tc_ecfp.csv', 
+  # synthesize_ranking('preds_arer_tc_graphconv_oversp.csv', 'ordered_arer_tc_gc.csv', 
+  #   weigh_by_occurrence=True, AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
+  # synthesize_ranking('preds_arer_tc_graphconv_oversp.csv', 'ordered_arer_tc_gc_oversp.csv', 
   #   direction=True, dataset_used=dataset, AR_toxcast_codes=AR_toxcast_codes, 
   #   AR_score_coef=AR_antagonist_score_coef)
-  #compare('ordered_arer_kiba_ecfp.csv', 'ordered_arer_tc_ecfp.csv', cutoff=2000, exclude_prot=ER_list_s)
+  # compare('avg_ar_tc.csv', 'avg_ar_tc_oversp.csv', cutoff=100, 
+  #   exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
-  #get_avg(input_files_list=['ordered_arer_tc_ecfp.csv', 'ordered_arer_tc_gc.csv'], exclude_prot=ER_list_s)
-  # calculate_mean_activity('avg_ar_tc.csv')
+  # get_avg(input_files_list=['ordered_arer_tc_ecfp_oversp.csv', 'ordered_arer_tc_gc_oversp.csv'], 
+  #   output_file_name = 'avg_ar_tc_oversp.csv', exclude_prot=ER_list_s)
+  # get_highest_similarity(input_file='avg_ar_tc.csv', output_file='avg_ar_tc_similarity_rdkit.csv',
+  #   comparison_file='../full_toxcast/restructured.csv')
+  filter_similarity(input_file='avg_ar_tc_similarity_rdkit.csv', 
+    output_file='avg_ar_tc_sim_rdkit_subset.csv', threshold=0.85, limit=True)
+  #calculate_mean_activity('avg_ar_tc.csv')
   #calculate_ndcg('avg_ar_tc.csv')
   #calc_subsets_cindex('avg_ar_tc.csv')
   #plot_values()
@@ -1491,7 +1587,7 @@ if __name__ == "__main__":
   #calc_cindex('avg_ar_tc.csv', panels_for_comparison=[], compound_file='ordered_compounds.csv')
   # plot_ar_against_gi('avg_ar_tc.csv', panels=['Central Nervous System', 'Leukemia'], threshold=100, 
   #   top_compounds=True, num_compounds=1000)
-  plot_real_ar_to_gi(AR_toxcast_codes=AR_toxcast_codes, plot_individually=False, 
-    AR_score_coef=AR_agonist_score_coef, antagonist=False)
+  # plot_real_ar_to_gi(AR_toxcast_codes=AR_toxcast_codes, plot_individually=False, 
+  #   AR_score_coef=AR_antagonist_score_coef, antagonist=True)
   # calculate_mean_for_observed_ar(AR_toxcast_codes=AR_toxcast_codes, 
   #   AR_score_coef=AR_antagonist_score_coef)
