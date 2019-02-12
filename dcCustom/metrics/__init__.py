@@ -216,9 +216,9 @@ class Metric(object):
       n_samples = 1
     else:
       n_samples = y_true.shape[0]
-    # If there are no nonzero samples, metric is ill-defined.
+    # If there are no nonzero examples, metric is ill-defined.
     if not y_true.size:
-      return np.nan, np.nan
+      return np.nan
 
     y_true = np.reshape(y_true, (n_samples,))
     if self.mode == "classification":
@@ -271,7 +271,7 @@ class Metric(object):
 
       calculate_metric = True      
       if sum(w_task != 0) > 0:        
-        if self.metric.__name__ in {'concordance_index', 'r2_score'}:
+        if self.metric.__name__ == 'concordance_index':
           # See whether the y_true vector has more than 0 valid pairs. If so, calculate. 
           y_true_task_vec, _ = self.get_y_vectors(y_task, y_pred_task, w_task)
           unequal_count = sum(y_true_task_vec[0] != y_true_task_vec)
@@ -335,7 +335,7 @@ class Metric(object):
           if all_missing:     
             calculate_metric = False
           else:
-            if self.metric.__name__ in {'concordance_index', 'r2_score'}:
+            if self.metric.__name__ == 'concordance_index' or self.metric.__name__ == 'r2_score':
               # See whether the y_true vector has more than 0 valid pairs. If so, calculate. 
               y_true_task_vec, _ = self.get_y_vectors(y_task, y_pred_task, w_task)
               calculate_metric = (sum(y_true_task_vec[0] != y_true_task_vec) >= 1)
@@ -376,16 +376,13 @@ class Metric(object):
             continue
           total_valid_obs_for_metatask += num_obs_for_task
           sum_metric_values += num_obs_for_task * single_task_value
-        if total_valid_obs_for_metatask > 0:
-          metric_value = sum_metric_values/total_valid_obs_for_metatask  
-        else:
-          metric_value = np.nan
+        metric_value = sum_metric_values/total_valid_obs_for_metatask  
         
       else:
         # Calculates the metric value for the whole metatask which is represented as a concatenated vector.
         calculate_metric = True
         if len(y_true_meta) > 0:        
-          if self.metric.__name__ in {'concordance_index', 'r2_score'}:
+          if self.metric.__name__ == 'concordance_index' or self.metric.__name__ == 'r2_score':
             # See whether the y_true vector has more than 0 valid pairs. If so, calculate. 
             unequal_count = sum(y_true_meta[0] != y_true_meta)
             if unequal_count <= 0:
@@ -558,7 +555,8 @@ class Metric(object):
       
       total_datapoints -= excluded_datapoints
       sum_coefficient = 0
-      included_n_tasks = sum(np.invert(np.isnan(weighted_metrics)))
+      included_n_tasks = n_tasks - len(excluded_single_tasks_dict) - len(taskind_to_metatask) \
+        + len(metatask_to_task) - len(excluded_metatasks_dict)
       for task in range(n_tasks):
         # This block only processes the tasks that are not aggregated.
         if task in taskind_to_metatask:
