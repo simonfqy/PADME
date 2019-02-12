@@ -23,7 +23,17 @@ from dcCustom.molnet.run_benchmark_models import model_regression, model_classif
 from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 FLAGS = None
-  
+
+def get_aggregate_list(aggregate_suffix_file, aggregate):
+  assert isinstance(aggregate, list)
+  assert len(aggregate) > 0
+  prefix = aggregate[0] + '_'
+  df_subgroup = pd.read_csv(aggregate_suffix_file, header = 0, index_col=0)
+  subgroup_list = list(set(df_subgroup.iloc[:]['Subgroup']))
+  new_aggregate_list = [prefix + str(subgroup) for subgroup in subgroup_list]
+  return new_aggregate_list
+
+
 def load_prot_dict(prot_desc_dict, prot_seq_dict, prot_desc_path, 
   sequence_field, phospho_field):
   if re.search('davis', prot_desc_path, re.I):
@@ -47,7 +57,129 @@ def load_prot_dict(prot_desc_dict, prot_seq_dict, prot_desc_path,
     sequence = row[sequence_field]
     phosphorylated = row[phospho_field]
     assert pair not in prot_seq_dict
-    prot_seq_dict[pair] = (phosphorylated, sequence)    
+    prot_seq_dict[pair] = (phosphorylated, sequence)   
+    
+    
+def write_file_for_a_cv_iteration(writer, train_score, valid_score, model_name, dataset, h, tasks,
+  aggregated_tasks, time_finish=None, time_start=None):
+  
+  train_score_dict = train_score[model_name]
+  valid_score_dict = valid_score[model_name]
+  
+  if len(tasks) > 1:
+    train_score_dict = train_score[model_name]['averaged']
+    valid_score_dict = valid_score[model_name]['averaged']          
+
+  for i in train_score_dict:
+    # i here is the metric name, like 'rms_score'.        
+    this_train_score = train_score_dict[i]
+    this_valid_score = valid_score_dict[i] 
+    output_line = [
+          dataset,
+          model_name, i, 'train',
+          this_train_score, 'valid', this_valid_score,
+          'fold_num', h
+    ]   
+    if time_finish is not None and time_start is not None:
+      output_line.extend(['time_for_running', time_finish - time_start])
+    writer.writerow(output_line)
+    
+    if len(aggregated_tasks) > 1:
+      train_score_tasks = train_score[model_name]['per_task_score'][i]
+      valid_score_tasks = valid_score[model_name]['per_task_score'][i]
+      
+      for index, task in enumerate(aggregated_tasks):
+        train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
+        dataset_nm = dataset + '_' + task
+        output_line = [
+                dataset_nm,
+                model_name, i, 'train',
+                train_sc_tk, 'valid', valid_score_tasks[index]
+        ]              
+        writer.writerow(output_line)
+
+
+def write_intermediate_file(out_path, intermediate_file, train_scores_list, 
+  valid_scores_list, train_score, valid_score, tasks, dataset, h, aggregated_tasks):
+  
+  train_scores_list.append(train_score)
+  valid_scores_list.append(valid_score)
+  with open(os.path.join(out_path, intermediate_file), 'a') as f:
+    writer = csv.writer(f)
+    model_name = list(train_scores_list[0].keys())[0]
+    
+    write_file_for_a_cv_iteration(writer, train_score, valid_score, model_name, dataset, h, tasks,
+      aggregated_tasks, time_finish=None, time_start=None)
+      
+      
+def write_results_file(out_path, results_file, train_scores_list, valid_scores_list, fold_num,
+  dataset, tasks, aggregated_tasks, time_finish_fitting, time_start_fitting, cross_validation=True,
+  test=False, test_scores_list=None, early_stopping=False, opt_epoch=None):
+  
+  with open(os.path.join(out_path, results_file), 'a') as f:
+    writer = csv.writer(f)
+    model_name = list(train_scores_list[0].keys())[0]
+     
+    if cross_validation:
+      for h in range(fold_num):
+        train_score = train_scores_list[h]
+        valid_score = valid_scores_list[h]
+        
+        write_file_for_a_cv_iteration(writer, train_score, valid_score, model_name, dataset, h, 
+          tasks, aggregated_tasks, time_finish=time_finish_fitting, time_start=time_start_fitting)          
+          
+    else:
+      train_score = train_scores_list[0]
+      valid_score = valid_scores_list[0]
+      if test and test_scores_list is not None:
+        test_score = test_scores_list[0]
+
+      train_score_dict = train_score[model_name]
+      valid_score_dict = valid_score[model_name]
+      if test:
+        test_score_dict = test_score[model_name]
+      if len(tasks) > 1:
+        train_score_dict = train_score[model_name]['averaged']
+        valid_score_dict = valid_score[model_name]['averaged']
+        if test:
+          test_score_dict = test_score[model_name]['averaged']
+
+      for i in train_score_dict:
+        # i here is the metric name, like 'rms_score'.        
+        this_train_score = train_score_dict[i]
+        this_valid_score = valid_score_dict[i]
+        if test:
+          this_test_score = test_score_dict[i]
+              
+        output_line = [
+                  dataset,
+                  model_name, i, 'train',
+                  this_train_score, 'valid', this_valid_score
+        ]
+        if test:
+          output_line.extend(['test', this_test_score])
+        if early_stopping and opt_epoch is not None:
+          output_line.extend(['optimal epoch', opt_epoch[0]])
+          output_line.extend(['best validation score', opt_epoch[1]])
+        writer.writerow(output_line)
+        
+        if len(aggregated_tasks) > 1:
+          train_score_tasks = train_score[model_name]['per_task_score'][i]
+          valid_score_tasks = valid_score[model_name]['per_task_score'][i]
+          if test:
+            test_score_tasks = test_score[model_name]['per_task_score'][i]
+          for index, task in enumerate(aggregated_tasks):
+            train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
+            dataset_nm = dataset + '_' + task
+            output_line = [
+                    dataset_nm,
+                    model_name, i, 'train',
+                    train_sc_tk, 'valid', valid_score_tasks[index]
+            ]
+            if test:
+              output_line.extend(['test', test_score_tasks[index]])            
+            writer.writerow(output_line)
+          
 
 def run_analysis(_):
   dataset = FLAGS.dataset 
@@ -86,12 +218,19 @@ def run_analysis(_):
   intermediate_file = FLAGS.intermediate_file
   plot = FLAGS.plot
   aggregate = FLAGS.aggregate
+  aggregate_suffix_file = FLAGS.aggregate_suffix_file
   predict_only = FLAGS.predict_only
   restore_model = FLAGS.restore_model
   csv_out = FLAGS.csv_out
   tensorboard = FLAGS.tensorboard
   oversampled = FLAGS.oversampled
+  input_protein = not FLAGS.no_input_protein
+  weighted_metric_of_each_endpoint = FLAGS.weighted_metric_of_each_endpoint
   
+  if aggregate_suffix_file is not None and len(aggregate) > 0:
+    aggregate = get_aggregate_list(aggregate_suffix_file, aggregate)
+  assert len(set(aggregate)) == len(aggregate)
+
   if predict_only:
     hyper_param_search = False
     cross_validation = False
@@ -111,25 +250,30 @@ def run_analysis(_):
   direction = False
 
   if mode == 'regression':
-    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.mean, 
-      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
-      dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.mean, 
-      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
-      dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.mean, 
-      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate)]
+    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.rms_score, np.nanmean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate, 
+      weighted_metric_of_each_endpoint=weighted_metric_of_each_endpoint),
+      dcCustom.metrics.Metric(dcCustom.metrics.concordance_index, np.nanmean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate,
+      weighted_metric_of_each_endpoint=weighted_metric_of_each_endpoint),
+      dcCustom.metrics.Metric(dcCustom.metrics.r2_score, np.nanmean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate,
+      weighted_metric_of_each_endpoint=weighted_metric_of_each_endpoint)]
   elif mode == 'classification':
     direction = True
-    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
-      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate),
-      dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.mean, 
-      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate)]
+    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.nanmean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate,
+      weighted_metric_of_each_endpoint=weighted_metric_of_each_endpoint),
+      dcCustom.metrics.Metric(dcCustom.metrics.prc_auc_score, np.nanmean, 
+      arithmetic_mean=arithmetic_mean, aggregate_list=aggregate,
+      weighted_metric_of_each_endpoint=weighted_metric_of_each_endpoint)]
   elif mode == "reg-threshold":
     # TODO: this [0] is just a temporary solution. Need to implement per-task thresholds.
     # It is not a very trivial task.
     direction = True
-    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.mean, 
+    metrics = [dcCustom.metrics.Metric(dcCustom.metrics.roc_auc_score, np.nanmean, 
       threshold=threshold[0], mode="regression", arithmetic_mean=arithmetic_mean, 
-      aggregate_list=aggregate)]
+      aggregate_list=aggregate, weighted_metric_of_each_endpoint=weighted_metric_of_each_endpoint)]
 
   # We assume that values above the threshold are "on" or 1, those below are "off"
   # or 0.  
@@ -160,8 +304,9 @@ def run_analysis(_):
 
   prot_desc_dict = {}
   prot_seq_dict = {}
-  for path in prot_desc_path:
-    load_prot_dict(prot_desc_dict, prot_seq_dict, path, 1, 2)
+  if input_protein:
+    for path in prot_desc_path:
+      load_prot_dict(prot_desc_dict, prot_seq_dict, path, 1, 2)
   prot_desc_length = 8421
   
   if cross_validation:    
@@ -171,7 +316,8 @@ def run_analysis(_):
                                                   K = fold_num, mode=mode, predict_cold=predict_cold,
                                                   cold_drug=cold_drug, cold_target=cold_target,
                                                   split_warm=split_warm, prot_seq_dict=prot_seq_dict,
-                                                  filter_threshold=filter_threshold, oversampled=oversampled)
+                                                  filter_threshold=filter_threshold, oversampled=oversampled,
+                                                  input_protein=input_protein)
   else:
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
@@ -179,7 +325,8 @@ def run_analysis(_):
                                                   predict_cold=predict_cold, cold_drug=cold_drug, 
                                                   cold_target=cold_target, split_warm=split_warm,
                                                   filter_threshold=filter_threshold, 
-                                                  prot_seq_dict=prot_seq_dict, oversampled=oversampled)
+                                                  prot_seq_dict=prot_seq_dict, oversampled=oversampled,
+                                                  input_protein=input_protein)
     
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
@@ -196,11 +343,12 @@ def run_analysis(_):
     assert tasks is not None      
     for meta_task_name in aggregate:        
       for i, task_name in enumerate(tasks):
-        if re.search(meta_task_name, task_name, re.I):                  
-          if meta_task_name not in meta_task_list:
-            meta_task_list.append(meta_task_name)
-            aggregated_tasks.append(meta_task_name)          
-          aggregated_tasks.remove(task_name)
+        if not re.search(meta_task_name, task_name, re.I):  
+          continue                
+        if meta_task_name not in meta_task_list:
+          meta_task_list.append(meta_task_name)
+          aggregated_tasks.append(meta_task_name)          
+        aggregated_tasks.remove(task_name)
 
   matchObj = re.match('mpnn', model, re.I)
   model = 'mpnn' if matchObj else model
@@ -235,7 +383,8 @@ def run_analysis(_):
         no_r2=no_r2,
         plot=plot,
         verbose_search=verbose_search,
-        aggregated_tasks=aggregated_tasks)
+        aggregated_tasks=aggregated_tasks,
+        input_protein=input_protein)
     hyper_parameters = hyper_param_opt
   
   opt_epoch = -1
@@ -278,14 +427,15 @@ def run_analysis(_):
           tensorboard=tensorboard,
           predict_only=predict_only,
           restore_model=restore_model,
-          prediction_file=csv_out)
+          prediction_file=csv_out,
+          input_protein=input_protein)
     if predict_only:
       return
     train_scores_list.append(train_score)
     valid_scores_list.append(valid_score)
     test_scores_list.append(test_score)
   else:
-    for h in range(fold_num):
+    for h in range(fold_num):  
       train_score, valid_score, _, _ = model_functions[mode](
           all_dataset[h][0],
           all_dataset[h][1],
@@ -308,49 +458,15 @@ def run_analysis(_):
           no_r2=no_r2,
           plot=plot,
           aggregated_tasks=aggregated_tasks,
-          restore_model=restore_model)
-      # TODO: I made the decision to force disable early stopping for cross validation here,
-      # not quite sure whether this is right.
-      train_scores_list.append(train_score)
-      valid_scores_list.append(valid_score)
+          restore_model=restore_model,
+          input_protein=input_protein)
+      # I made the decision to force disable early stopping for cross validation here,
+      # not quite sure whether this is right.      
+       
       # The section below is a workaround for the instability of the server. I don't like
       # it but guess there is no other choices.
-      with open(os.path.join(out_path, intermediate_file), 'a') as f:
-        writer = csv.writer(f)
-        model_name = list(train_scores_list[0].keys())[0]
-
-        train_score_dict = train_score[model_name]
-        valid_score_dict = valid_score[model_name]
-        
-        if len(tasks) > 1:
-          train_score_dict = train_score[model_name]['averaged']
-          valid_score_dict = valid_score[model_name]['averaged']          
-
-        for i in train_score_dict:
-          # i here is the metric name, like 'rms_score'.        
-          this_train_score = train_score_dict[i]
-          this_valid_score = valid_score_dict[i] 
-          output_line = [
-                dataset,
-                model_name, i, 'train',
-                this_train_score, 'valid', this_valid_score
-          ]          
-          output_line.extend(['fold_num', h])
-          writer.writerow(output_line)
-          
-          if len(aggregated_tasks) > 1:
-            train_score_tasks = train_score[model_name]['per_task_score'][i]
-            valid_score_tasks = valid_score[model_name]['per_task_score'][i]
-            
-            for index, task in enumerate(aggregated_tasks):
-              train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
-              dataset_nm = dataset + '_' + task
-              output_line = [
-                      dataset_nm,
-                      model_name, i, 'train',
-                      train_sc_tk, 'valid', valid_score_tasks[index]
-              ]              
-              writer.writerow(output_line)
+      write_intermediate_file(out_path, intermediate_file, train_scores_list, 
+        valid_scores_list, train_score, valid_score, tasks, dataset, h, aggregated_tasks)      
   
   time_finish_fitting = time.time()
   
@@ -373,100 +489,11 @@ def run_analysis(_):
 
   results_file += '.csv'
 
-  with open(os.path.join(out_path, results_file), 'a') as f:
-    writer = csv.writer(f)
-    model_name = list(train_scores_list[0].keys())[0]
-     
-    if cross_validation:
-      for h in range(fold_num):
-        train_score = train_scores_list[h]
-        valid_score = valid_scores_list[h]
-
-        train_score_dict = train_score[model_name]
-        valid_score_dict = valid_score[model_name]
-        
-        if len(tasks) > 1:
-          train_score_dict = train_score[model_name]['averaged']
-          valid_score_dict = valid_score[model_name]['averaged']          
-
-        for i in train_score_dict:
-          # i here is the metric name, like 'rms_score'.        
-          this_train_score = train_score_dict[i]
-          this_valid_score = valid_score_dict[i] 
-          output_line = [
-                dataset,
-                model_name, i, 'train',
-                this_train_score, 'valid', this_valid_score,
-                "fold_num", h
-          ]          
-          output_line.extend(
-              ['time_for_running', time_finish_fitting - time_start_fitting])
-          writer.writerow(output_line)
-          
-          if len(aggregated_tasks) > 1:
-            train_score_tasks = train_score[model_name]['per_task_score'][i]
-            valid_score_tasks = valid_score[model_name]['per_task_score'][i]
-            
-            for index, task in enumerate(aggregated_tasks):
-              train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
-              dataset_nm = dataset + '_' + task
-              output_line = [
-                      dataset_nm,
-                      model_name, i, 'train',
-                      train_sc_tk, 'valid', valid_score_tasks[index]
-              ]              
-              writer.writerow(output_line)  
-    else:
-      train_score = train_scores_list[0]
-      valid_score = valid_scores_list[0]
-      if test:
-        test_score = test_scores_list[0]
-
-      train_score_dict = train_score[model_name]
-      valid_score_dict = valid_score[model_name]
-      if test:
-        test_score_dict = test_score[model_name]
-      if len(tasks) > 1:
-        train_score_dict = train_score[model_name]['averaged']
-        valid_score_dict = valid_score[model_name]['averaged']
-        if test:
-          test_score_dict = test_score[model_name]['averaged']
-
-      for i in train_score_dict:
-        # i here is the metric name, like 'rms_score'.        
-        this_train_score = train_score_dict[i]
-        this_valid_score = valid_score_dict[i]
-        if test:
-          this_test_score = test_score_dict[i]
-              
-        output_line = [
-                  dataset,
-                  model_name, i, 'train',
-                  this_train_score, 'valid', this_valid_score
-        ]
-        if test:
-          output_line.extend(['test', this_test_score])
-        if early_stopping:
-          output_line.extend(['optimal epoch', opt_epoch[0]])
-          output_line.extend(['best validation score', opt_epoch[1]])
-        writer.writerow(output_line)
-        
-        if len(aggregated_tasks) > 1:
-          train_score_tasks = train_score[model_name]['per_task_score'][i]
-          valid_score_tasks = valid_score[model_name]['per_task_score'][i]
-          if test:
-            test_score_tasks = test_score[model_name]['per_task_score'][i]
-          for index, task in enumerate(aggregated_tasks):
-            train_sc_tk = None if train_score_tasks is None else train_score_tasks[index]
-            dataset_nm = dataset + '_' + task
-            output_line = [
-                    dataset_nm,
-                    model_name, i, 'train',
-                    train_sc_tk, 'valid', valid_score_tasks[index]
-            ]
-            if test:
-              output_line.extend(['test', test_score_tasks[index]])            
-            writer.writerow(output_line)
+  write_results_file(out_path, results_file, train_scores_list, valid_scores_list, fold_num,
+    dataset, tasks, aggregated_tasks, time_finish_fitting, time_start_fitting, 
+    cross_validation=cross_validation, test=test, test_scores_list=test_scores_list, 
+    early_stopping=early_stopping, opt_epoch=opt_epoch)
+    
   if hyper_param_search:
     with open(os.path.join(out_path, dataset + model + '.pkl'), 'w') as f:
       pickle.dump(hyper_parameters, f)
@@ -593,6 +620,12 @@ if __name__ == '__main__':
         task.'      
   )
   parser.add_argument(
+      '--aggregate_suffix_file',
+      type=str,
+      default=None,
+      help='File name of the csv file storing the suffixes used for aggregating tasks.'
+  )
+  parser.add_argument(
       '--test',      
       default=False,
       help='Flag of whether there will be test data.',
@@ -709,6 +742,24 @@ if __name__ == '__main__':
         cross-validation.',
       action='store_true'
   )
+  parser.add_argument(
+      '--no_input_protein',      
+      default=False,
+      help='Indicating whether protein information is part of model input.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--weighted_metric_of_each_endpoint',      
+      default=False,
+      help="Indicating whether the 'aggregated' endpoints in multi-task models are treated \
+        separately to calculate a weighted average of evaluation metrics by the number of \
+        observations in each endpoint. If this is set to False, all 'aggregated' endpoints are \
+        concatenated into one array, and the evaluation metrics are calculated on this \
+        concatenated array. If the 'aggregated' endpoints are intrinsically different and cannot \
+        be pooled together to calculate a metric, as in the case of the ToxCast dataset, it is \
+        necessary to set it as True.",
+      action='store_true'
+  )  
 
   FLAGS, unparsed = parser.parse_known_args()
   #pdb.set_trace()
