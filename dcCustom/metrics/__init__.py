@@ -395,8 +395,7 @@ class Metric(object):
               assert excluded_metatasks_dict is not None
               excluded_metatasks_dict[meta_task_name] = aggregated_num_obs[meta_task_name]              
         else:
-          calculate_metric = False
-          pdb.set_trace()     
+          calculate_metric = False            
           
         if calculate_metric:
           metric_value = self.metric(y_true_meta, y_pred_meta)
@@ -558,7 +557,7 @@ class Metric(object):
       
       total_datapoints -= excluded_datapoints
       sum_coefficient = 0
-      included_n_tasks = sum(np.invert(np.isnan(weighted_metrics)))
+      included_n_tasks = sum(np.invert(np.isnan(computed_metrics)))
       for task in range(n_tasks):
         # This block only processes the tasks that are not aggregated.
         if task in taskind_to_metatask:
