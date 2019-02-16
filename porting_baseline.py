@@ -54,7 +54,7 @@ def get_pair_values_and_fold_ind(all_dataset, K, transformers, create_mapping=Fa
       assert pair not in dt_pair_to_fold
       # Also start from 1.
       dt_pair_to_fold[pair] = i + 1      
-      assert pair not in dt_pair_to_value:
+      assert pair not in dt_pair_to_value
       dt_pair_to_value[pair] = y_b[0]
   
 
