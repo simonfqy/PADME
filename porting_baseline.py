@@ -15,13 +15,52 @@ import re
 import deepchem
 from deepchem.trans import undo_transforms
 import dcCustom
+from collections import OrderedDict
 
 # This script is intended to parse the dataset generated in PADME(dcCustom) to a readable form
 # of SimBoost and KronRLS.
 
+def get_pair_values_and_fold_ind(all_dataset, K, transformers, create_mapping=False, 
+  smiles_to_some_id=None, drug_id_and_smiles_to_ind=None, prot_name_and_seq_to_ind=None, 
+  dt_pair_to_fold=None, dt_pair_to_value=None, drug_mol_to_ind = None, prot_to_ind=None):  
+  
+  for i in range(K):
+    validation_data = all_dataset[i][1]    
+    for (X_b, y_b, w_b, _) in validation_data.itersamples():      
+      assert w_b[0] == 1.0
+      drug_mol = X_b[0]      
+      protein = X_b[1]
+      y_b = undo_transforms(y_b, transformers)
+      if not create_mapping:
+        drug_smiles = drug_mol.smiles
+        some_id = smiles_to_some_id[drug_smiles]
+        drug_pair = (some_id, drug_smiles)
+        drug_ind = drug_id_and_smiles_to_ind[drug_pair]
+        prot_seq = protein.get_sequence()[1]
+        prot_name = protein.get_name()[1]
+        prot_pair = (prot_name, prot_seq)
+        prot_ind = prot_name_and_seq_to_ind[prot_pair]
+        pair = (drug_ind, prot_ind)
+
+      else:
+        if drug_mol not in drug_mol_to_ind:
+          # values start from 1.
+          drug_mol_to_ind[drug_mol] = len(drug_mol_to_ind) + 1
+          
+        if protein not in prot_to_ind:
+          prot_to_ind[protein] = len(prot_to_ind) + 1
+        pair = (drug_mol, protein)
+      
+      assert pair not in dt_pair_to_fold
+      # Also start from 1.
+      dt_pair_to_fold[pair] = i + 1      
+      assert pair not in dt_pair_to_value:
+      dt_pair_to_value[pair] = y_b[0]
+  
+
 def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K = 5, 
   mode = 'regression', predict_cold = False, cold_drug=False, cold_target=False, 
-  split_warm=False, filter_threshold=0, create_mapping=False):
+  split_warm=False, filter_threshold=0, create_mapping=False, input_protein=True):
 
   assert (predict_cold + cold_drug + cold_target + split_warm) <= 1
   if mode == 'regression' or mode == 'reg-threshold':
@@ -31,6 +70,7 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
   duplicated_drugs = set()
   some_id_name = 'cid'
   cmpd_file_name = "compound_cids.txt"
+  prot_file_name = "prot_info.csv"
   if re.search('davis', dataset_nm, re.I):
     data_dir = "davis_data/"    
     with open(data_dir + "SMILES_CIDs_corrected.txt", 'r') as f:
@@ -64,20 +104,11 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
       if row[1] not in smiles_to_some_id:
         smiles_to_some_id[row[1]] = row[0]
 
-  # elif re.search('toxcast', dataset_nm, re.I):
-  #   data_dir = "full_toxcast/"
-  #   some_id_name = "InchiKey"
-  #   cmpd_file_name = "Inchikeys.txt"
-  #   df = pd.read_csv(data_dir + 'Assays_smiles_INCHI.csv', header = 0, index_col=3, 
-  #     usecols=list(range(1, 5))+[14])
-  #   for row in df.itertuples():
-  #     if row[2] != row[2]:
-  #       continue
-  #     if row[2] not in smiles_to_some_id:
-  #       smiles_to_some_id[row[2]] = row[4]
   simboost_data_dir = "./SimBoost/data/" + data_dir
 
   suffix = ""
+  if not input_protein:
+    suffix = "_no_prot" + suffix
   if filter_threshold > 0:
     suffix = "_filtered" + suffix
   if predict_cold:
@@ -89,13 +120,12 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
   elif cold_target:
     suffix = "_cold_target" + suffix
 
-  opt_suffix = ""
   if re.match('GraphConv', featurizer, re.I):
     opt_suffix = "_gc"
   elif re.match('Weave', featurizer, re.I):
     opt_suffix = "_wv"
   elif re.match('ecfp', featurizer, re.I):
-    pass
+    opt_suffix = ""
   else:
     assert False
   
@@ -105,113 +135,42 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
       save_dir, K)
   
   assert loaded
-  pair_to_fold = {}
-  pair_to_value = {}
-  dataset_length = 0
+  dt_pair_to_fold = {}
+  dt_pair_to_value = {}
+  drug_id_and_smiles_to_ind = OrderedDict()
+  prot_name_and_seq_to_ind = OrderedDict()
   time_start = time.time()
   if not create_mapping:
     # Use the existing mappings stored in prot_info.csv and drug_info.csv.
-    drug_pair_mapping = {}
-    prot_pair_mapping = {}
-    drug_pair_list = []
-    prot_pair_list = []
     df_drug = pd.read_csv(data_dir + 'drug_info.csv', header = 0, index_col=0)
     for row in df_drug.itertuples():
       pair = (str(row[0]), row[1])
-      if pair not in drug_pair_mapping:
-        drug_pair_mapping[pair] = row[2]
-        drug_pair_list.append(pair)
+      if pair not in drug_id_and_smiles_to_ind:
+        drug_id_and_smiles_to_ind[pair] = row[2]        
     
     df_prot = pd.read_csv(data_dir + 'prot_info.csv', header = 0, index_col=0)
     for row in df_prot.itertuples():
       pair = (row[0], row[1])
-      if pair not in prot_pair_mapping:
-        prot_pair_mapping[pair] = row[2]
-        prot_pair_list.append(pair)         
+      if pair not in prot_name_and_seq_to_ind:
+        prot_name_and_seq_to_ind[pair] = row[2]             
+
+  drug_mol_to_ind = OrderedDict()
+  prot_to_ind = OrderedDict()
+
+  if input_protein:
+    get_pair_values_and_fold_ind(all_dataset, K, transformers, create_mapping=create_mapping, 
+      smiles_to_some_id=smiles_to_some_id, drug_id_and_smiles_to_ind=drug_id_and_smiles_to_ind, 
+      prot_name_and_seq_to_ind=prot_name_and_seq_to_ind, dt_pair_to_fold=dt_pair_to_fold,
+      dt_pair_to_value=dt_pair_to_value, drug_mol_to_ind = drug_mol_to_ind, prot_to_ind=prot_to_ind)  
   else:
-    drug_mapping = {}
-    prot_mapping = {}
-    drug_list = []
-    prot_list = []
-
-  for i in range(K):
-    train_data = all_dataset[i][0]
-    validation_data = all_dataset[i][1]
-    
-    for (X_b, y_b, w_b, _) in validation_data.itersamples():      
-      assert w_b[0] == 1.0
-      drug_mol = X_b[0]
-      protein = X_b[1]
-      y_b = undo_transforms(y_b, transformers)
-      if not create_mapping:
-        drug_smiles = drug_mol.smiles
-        some_id = smiles_to_some_id[drug_smiles]
-        drug_pair = (some_id, drug_smiles)
-        drug_ind = drug_pair_mapping[drug_pair]
-        prot_seq = protein.get_sequence()[1]
-        prot_name = protein.get_name()[1]
-        prot_pair = (prot_name, prot_seq)
-        prot_ind = prot_pair_mapping[prot_pair]
-
-        pair = (drug_ind, prot_ind)
-        assert pair not in pair_to_fold        
-        pair_to_fold[pair] = i + 1      
-        if pair in pair_to_value:
-          assert pair_to_value[pair] == y_b[0]
-        else:       
-          pair_to_value[pair] = y_b[0]        
-        dataset_length += 1
-
-      else:
-        if drug_mol not in drug_mapping:
-          # values start from 1.
-          num_drug = len(drug_mapping)
-          drug_mapping[drug_mol] = num_drug + 1
-          drug_list.append(drug_mol)
-          
-        if protein not in prot_mapping:
-          num_prot = len(prot_mapping)
-          prot_mapping[protein] = num_prot + 1
-          prot_list.append(protein)
-
-        pair = (drug_mol, protein)
-        assert pair not in pair_to_fold
-        # Also start from 1.
-        pair_to_fold[pair] = i + 1      
-        if pair in pair_to_value:
-          assert pair_to_value[pair] == y_b[0]
-        else:
-          assert i == 0        
-          pair_to_value[pair] = y_b[0]
-
-        if i == 0:
-          dataset_length += 1
-
-    if i == 0 and create_mapping:
-      for (X_b, y_b, w_b, _) in train_data.itersamples():
-        assert w_b[0] == 1.0
-        drug_mol = X_b[0]
-        protein = X_b[1]
-        if drug_mol not in drug_mapping:
-          num_drug = len(drug_mapping)
-          drug_mapping[drug_mol] = num_drug + 1
-          
-        if protein not in prot_mapping:
-          num_prot = len(prot_mapping)
-          prot_mapping[protein] = num_prot + 1
-        pair = (drug_mol, protein)
-        if pair not in pair_to_value:
-          y_b = undo_transforms(y_b, transformers)
-          pair_to_value[pair] = y_b[0]
-        dataset_length += 1
-
-  assert len(pair_to_fold) == dataset_length
-  # Now we need to construct a compound_cids.txt file according to the order in drug_list.
+    raise ValueError("Currently input_protein==False scenario is unsupported.")
+  
+  # Now we need to construct a compound_cids.txt file according to the order in drug_mol_to_ind.
   if create_mapping:
-    print("len(drug_list): ", len(drug_list))    
+    print("len(drug_mol_to_ind): ", len(drug_mol_to_ind))    
     with open(data_dir + cmpd_file_name, 'w') as f:
       some_id_list = []
-      for drug_mol in drug_list:
+      for drug_mol in drug_mol_to_ind:
         drug_smiles = drug_mol.smiles
         some_id = smiles_to_some_id[drug_smiles]
         some_id_list.append(some_id)
@@ -220,21 +179,20 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
       sfile.write('\n'.join(some_id_list))
       sfile.close()
   else:
-    print("len(drug_pair_list): ", len(drug_pair_list))    
+    print("len(drug_id_and_smiles_to_ind): ", len(drug_id_and_smiles_to_ind))    
 
   dirs = [data_dir, simboost_data_dir]
   # Every time, write twice, in two different directories respectively.
   for directory in dirs:
     if not create_mapping:
       continue
-    with open(directory + "prot_info.csv", 'w', newline='') as csvfile:
+    with open(directory + prot_file_name, 'w', newline='') as csvfile:
       fieldnames = ['name', 'sequence', 'index']
       writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
       writer.writeheader()
-      for protein in prot_list:
+      for protein, ind in prot_to_ind.items():
         prot_seq = protein.get_sequence()[1]
         prot_name = protein.get_name()[1]
-        ind = prot_mapping[protein]
         writer.writerow({'name': prot_name, 'sequence': prot_seq, 'index': ind})
 
   for directory in dirs:
@@ -244,10 +202,9 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
       fieldnames = [some_id_name, 'smiles', 'index']
       writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
       writer.writeheader()
-      for drug_mol in drug_list:
+      for drug_mol, drug_ind in drug_mol_to_ind.items():
         drug_smiles = drug_mol.smiles
         some_id = smiles_to_some_id[drug_smiles]
-        drug_ind = drug_mapping[drug_mol]
         writer.writerow({some_id_name: some_id, 'smiles': drug_smiles, 'index': drug_ind})
 
   suffix = suffix + "_3"
@@ -258,29 +215,25 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
       writer = csv.DictWriter(csvfile, fieldnames = fieldnames)
       writer.writeheader()
       if create_mapping:
-        for drug_mol in drug_list:
-          drug_ind = drug_mapping[drug_mol]
-          for protein in prot_list:        
+        for drug_mol, drug_ind in drug_mol_to_ind.items():
+          for protein, prot_ind in prot_to_ind.items():        
             pair = (drug_mol, protein)
-            if pair not in pair_to_value:
-              assert pair not in pair_to_fold
+            if pair not in dt_pair_to_value:
+              assert pair not in dt_pair_to_fold
               continue
-            prot_ind = prot_mapping[protein]
-            value = pair_to_value[pair]
-            fold_ind = pair_to_fold[pair]
+            value = dt_pair_to_value[pair]
+            fold_ind = dt_pair_to_fold[pair]
             writer.writerow({'drug': drug_ind, 'target': prot_ind, 'value': value,
               'fold': fold_ind})
       else:
-        for drug_pair in drug_pair_list:
-          drug_ind = drug_pair_mapping[drug_pair]
-          for prot_pair in prot_pair_list:
-            prot_ind = prot_pair_mapping[prot_pair]        
+        for _, drug_ind in drug_id_and_smiles_to_ind.items():
+          for _, prot_ind in prot_name_and_seq_to_ind.items():  
             pair = (drug_ind, prot_ind)
-            if pair not in pair_to_value:
-              assert pair not in pair_to_fold
+            if pair not in dt_pair_to_value:
+              assert pair not in dt_pair_to_fold
               continue            
-            value = pair_to_value[pair]
-            fold_ind = pair_to_fold[pair]
+            value = dt_pair_to_value[pair]
+            fold_ind = dt_pair_to_fold[pair]
             writer.writerow({'drug': drug_ind, 'target': prot_ind, 'value': value,
               'fold': fold_ind})
 
