@@ -5,8 +5,6 @@ from __future__ import print_function
 from __future__ import division
 from __future__ import unicode_literals
 
-import random
-
 __author__ = "Bharath Ramsundar, Aneesh Pappu, modified by Qingyuan Feng "
 __copyright__ = "Copyright 2016, Stanford University"
 __license__ = "MIT"
@@ -20,13 +18,14 @@ import random
 import math
 import pdb
 import warnings
-import copy
 from rdkit import Chem
 from rdkit import DataStructs
 from rdkit.Chem import AllChem
 from rdkit.ML.Cluster import Butina
 from rdkit.Chem.Fingerprints import FingerprintMols
 from rdkit.SimDivFilters.rdSimDivPickers import MaxMinPicker
+from scipy.special import comb
+from scipy.cluster.hierarchy import single, fcluster
 import deepchem as dc
 from collections import OrderedDict
 from dcCustom.data import DiskDataset
@@ -34,6 +33,10 @@ from deepchem.utils import ScaffoldGenerator
 from deepchem.utils.save import log
 from deepchem.data import NumpyDataset
 from deepchem.utils.save import load_data
+from rdkit import Chem
+from rdkit import DataStructs
+from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem.Fingerprints import FingerprintMols
 
 
 def generate_scaffold(smiles, include_chirality=False):
@@ -1074,6 +1077,78 @@ class RandomSplitter(Splitter):
         break
 
 
+  def cold_drug_cluster_split(self, mol_entries, num_training, entries_for_training):
+    if not hasattr(self, 'mol_to_fp'):
+      self.mol_to_fp = dict()
+    if not hasattr(self, 'mols_to_dist'):
+      self.mols_to_dist = dict()
+    mol_list = list(mol_entries)
+    for mol in mol_entries:
+      if mol in self.mol_to_fp:
+        continue
+      mol_obj = Chem.MolFromSmiles(mol.smiles)
+      fingerprint = rdMolDescriptors.GetMorganFingerprintAsBitVect(mol_obj, 2, nBits=1024)
+      self.mol_to_fp[mol] = fingerprint
+
+    num_mols = len(mol_entries)
+    len_vector = int(num_mols*(num_mols-1)/2)
+    distance_arr = np.empty(len_vector)
+    distance_arr[:] = np.nan
+
+    for i, mol_1 in enumerate(mol_list):
+      for j in range(i + 1, len(mol_list)):
+        mol_2 = mol_list[j]        
+        mols_set = frozenset([mol_1, mol_2])
+        index = int(comb(num_mols, 2)) - int(comb(num_mols - i, 2)) + j - i - 1
+        if mols_set in self.mols_to_dist:
+          distance_arr[index] = self.mols_to_dist[mols_set]
+          continue
+        sim = DataStructs.FingerprintSimilarity(self.mol_to_fp[mol_1], self.mol_to_fp[mol_2])        
+        distance_arr[index] = 1 - sim
+        self.mols_to_dist[mols_set] = 1 - sim
+
+    clustering = fcluster(single(distance_arr), t=0.3, criterion='distance')
+    cluster_id_to_mol_ind = {}
+    for i, cluster_id in enumerate(clustering):
+      if cluster_id not in cluster_id_to_mol_ind:
+        cluster_id_to_mol_ind[cluster_id] = set()
+      cluster_id_to_mol_ind[cluster_id].add(i)
+
+    print("Number of molecules: ", num_mols)
+    print("Number of clusters: ", len(cluster_id_to_mol_ind))
+    
+    while True:        
+      cluster_id_chosen = random.choice(list(cluster_id_to_mol_ind))
+      entries_of_this_cluster = set()
+      for mol_ind in cluster_id_to_mol_ind[cluster_id_chosen]:
+        entries_of_this_cluster.update(mol_entries[mol_list[mol_ind]])
+      
+      if num_training - len(entries_for_training) < 20:
+        print("num_training: ", num_training)
+        print("len(entries_for_training): ", len(entries_for_training))
+        print("length of new elements: ", len(entries_of_this_cluster - 
+          entries_for_training))
+                    
+      if len(entries_for_training.union(entries_of_this_cluster)) > num_training:
+        new_elements = entries_of_this_cluster.difference(entries_for_training)
+        num_to_choose = num_training - len(entries_for_training)
+        new_elements = random.sample(new_elements, num_to_choose)
+        entries_for_training.update(new_elements)        
+      else:
+        # Only take union if the total size is within the limit.
+        entries_for_training.update(entries_of_this_cluster)
+        mol_ind_to_remove = set()
+        for mol_ind in cluster_id_to_mol_ind[cluster_id_chosen]:
+          del mol_entries[mol_list[mol_ind]]
+          mol_ind_to_remove.add(mol_ind)
+        cluster_id_to_mol_ind[cluster_id_chosen].difference_update(mol_ind_to_remove)
+        if len(cluster_id_to_mol_ind[cluster_id_chosen]) <= 0:
+          del cluster_id_to_mol_ind[cluster_id_chosen]
+        
+      if len(entries_for_training) >= num_training:
+        break
+
+
   def split(self,
             dataset,
             seed=None,
@@ -1172,9 +1247,11 @@ class RandomSplitter(Splitter):
       self.cold_drug_split_without_input_protein(all_entry_id, entries_for_training, 
         entry_id_to_assay, assay_to_entry_id, num_training, num_validation, num_test, frac_train)
 
+    elif self.cold_drug_cluster and self.input_protein:
+      self.cold_drug_cluster_split(mol_entries, num_training, entries_for_training)
+
     elif self.cold_drug_cluster:
-      # TODO
-      pass
+      raise ValueError("input_protein==False is not yet supported in cold_drug_cluster scenario.")
      
     elif self.oversampled:
       assert self.input_protein
