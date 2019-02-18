@@ -261,10 +261,7 @@ class Metric(object):
       else:
         y_pred_task = y_pred[:, task, :]
       w_task = w[:, task]
-      task_name = None
-      if plot and tasks is not None:
-        task_name = tasks[task]
-
+      
       whether_plot = plot
       if task in taskind_to_metatask:
         whether_plot = False
@@ -540,7 +537,7 @@ class Metric(object):
         task_name_to_metric_value=task_name_to_metric_value, num_observations=num_observations) 
         
     # Check to make sure the computed_metrics contains the elements in the order of aggregated_task_names.
-    for i, task_name in enumerate(aggregated_task_names):
+    for i, task_name in enumerate(aggregated_task_names):      
       metric_val = task_name_to_metric_value[task_name]
       np.testing.assert_almost_equal(metric_val, computed_metrics[i], decimal=5)     
     
