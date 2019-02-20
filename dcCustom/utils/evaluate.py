@@ -7,9 +7,6 @@ from __future__ import unicode_literals
 
 import csv
 import numpy as np
-import warnings
-import pandas as pd
-import sklearn
 from deepchem.utils.save import log
 from dcCustom.trans import undo_transforms
 from dcCustom.metrics import from_one_hot
@@ -36,7 +33,7 @@ def threshold_predictions(y, threshold):
 class Evaluator(object):
   """Class that evaluates a model on a given dataset."""
 
-  def __init__(self, model, dataset, transformers, verbose=False, is_training_set=False, 
+  def __init__(self, model, dataset, transformers, verbose=False, is_training_set=False,
     tasks=None, model_name=None):
     self.model = model
     self.dataset = dataset
