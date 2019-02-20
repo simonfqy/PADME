@@ -22,8 +22,8 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 
 def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False, 
-  cold_target=False, split_warm=False, filter_threshold=0, prot_seq_dict=None, currdir="./",
-  oversampled=False, input_protein=True): 
+  cold_target=False, cold_drug_cluster=False, split_warm=False, filter_threshold=0, 
+  prot_seq_dict=None, currdir="./", oversampled=False, input_protein=True): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -65,6 +65,8 @@ def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split
       delim = "_cold_drug" + delim
     elif cold_target:
       delim = "_cold_target" + delim
+    elif cold_drug_cluster:
+      delim = '_cold_drug_cluster' + delim
     if oversampled:
       delim = "_oversp" + delim
     if cross_validation:
@@ -109,8 +111,9 @@ def load_toxcast(featurizer = 'Weave', cross_validation=False, test=False, split
   splitters = {
       'index': deepchem.splits.IndexSplitter(),
       'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold, cold_drug=cold_drug, 
-        cold_target=cold_target, split_warm=split_warm, prot_seq_dict=prot_seq_dict,
-        threshold=filter_threshold, oversampled=oversampled, input_protein=input_protein),
+        cold_target=cold_target, cold_drug_cluster=cold_drug_cluster, split_warm=split_warm, 
+        prot_seq_dict=prot_seq_dict, threshold=filter_threshold, oversampled=oversampled, 
+        input_protein=input_protein),
       'scaffold': deepchem.splits.ScaffoldSplitter(),
       'butina': deepchem.splits.ButinaSplitter(),
       'task': deepchem.splits.TaskSplitter()
