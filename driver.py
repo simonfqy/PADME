@@ -10,12 +10,10 @@ import argparse
 import os
 import time
 import sys
-import pwd
 import pdb
 import csv
 import re
 import copy
-import deepchem
 import pickle
 import dcCustom
 from dcCustom.molnet.preset_hyper_parameters import hps

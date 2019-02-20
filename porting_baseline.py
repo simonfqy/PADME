@@ -3,17 +3,13 @@ from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
 
-import numpy as np
 import pandas as pd
 import os
 import time
-import sys
-import pwd
 import pdb
 import csv
 import re
-import deepchem
-from deepchem.trans import undo_transforms
+from dcCustom.trans import undo_transforms
 import dcCustom
 from collections import OrderedDict
 
