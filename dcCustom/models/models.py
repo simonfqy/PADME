@@ -10,20 +10,13 @@ __copyright__ = "Copyright 2018, Simon Fraser University"
 __license__ = "MIT"
 
 import pdb
-import sys
 import numpy as np
-import pandas as pd
-import joblib
 import os
 import shutil
 import tempfile
-import sklearn
 from sklearn.base import BaseEstimator
-
-from dcCustom.data import Dataset, pad_features
+from dcCustom.data import pad_features
 from dcCustom.trans import undo_transforms
-from deepchem.utils.save import load_from_disk
-from deepchem.utils.save import save_to_disk
 from deepchem.utils.save import log
 from dcCustom.utils.evaluate import Evaluator
 
@@ -39,6 +32,7 @@ class Model(BaseEstimator):
                prot_desc_dict=None,
                prot_desc_length=None,
                restore_model=False,
+               input_protein=True,
                **kwargs):
     """Abstract class for all models.
     Parameters:
@@ -67,6 +61,7 @@ class Model(BaseEstimator):
     self.verbose = verbose
     self.prot_desc_dict = prot_desc_dict
     self.prot_desc_length = prot_desc_length
+    self.input_protein = input_protein
 
   def __del__(self):
     if 'model_dir_is_temp' in dir(self) and self.model_dir_is_temp:
