@@ -1247,11 +1247,12 @@ class RandomSplitter(Splitter):
       self.cold_drug_split_without_input_protein(all_entry_id, entries_for_training, 
         entry_id_to_assay, assay_to_entry_id, num_training, num_validation, num_test, frac_train)
 
-    elif self.cold_drug_cluster and self.input_protein:
+    # elif self.cold_drug_cluster and self.input_protein:
+    elif self.cold_drug_cluster:
       self.cold_drug_cluster_split(mol_entries, num_training, entries_for_training)
 
-    elif self.cold_drug_cluster:
-      raise ValueError("input_protein==False is not yet supported in cold_drug_cluster scenario.")
+    # elif self.cold_drug_cluster:
+    #   raise ValueError("input_protein==False is not yet supported in cold_drug_cluster scenario.")
      
     elif self.oversampled:
       assert self.input_protein
