@@ -4,15 +4,9 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import numpy as np
-import tensorflow as tf
 import pandas as pd
-import argparse
-import os
-import sys
-import pwd
 import pdb
 import csv
-import re
 import math
 import matplotlib.pyplot as plt
 import time
