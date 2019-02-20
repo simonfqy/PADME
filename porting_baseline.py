@@ -60,9 +60,10 @@ def get_pair_values_and_fold_ind(all_dataset, K, transformers, create_mapping=Fa
 
 def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K = 5, 
   mode = 'regression', predict_cold = False, cold_drug=False, cold_target=False, 
-  split_warm=False, filter_threshold=0, create_mapping=False, input_protein=True):
+  split_warm=False, cold_drug_cluster=False, filter_threshold=0, create_mapping=False, 
+  input_protein=True):
 
-  assert (predict_cold + cold_drug + cold_target + split_warm) <= 1
+  assert (predict_cold + cold_drug + cold_target + split_warm + cold_drug_cluster) <= 1
   if mode == 'regression' or mode == 'reg-threshold':
     mode = 'regression'
 
@@ -119,6 +120,8 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
     suffix = "_cold_drug" + suffix
   elif cold_target:
     suffix = "_cold_target" + suffix
+  elif cold_drug_cluster:
+    suffix = "_cold_drug_cluster" + suffix
 
   if re.match('GraphConv', featurizer, re.I):
     opt_suffix = "_gc"
@@ -207,7 +210,7 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
         some_id = smiles_to_some_id[drug_smiles]
         writer.writerow({some_id_name: some_id, 'smiles': drug_smiles, 'index': drug_ind})
 
-  suffix = suffix + "_3"
+  suffix = suffix + ""
   triplet_split_name = "triplet_split" + opt_suffix + suffix + ".csv"
   for directory in dirs:
     with open(directory + triplet_split_name, 'w', newline='') as csvfile:
@@ -242,9 +245,10 @@ def parse_data(dataset_nm='davis', featurizer = 'GraphConv', split='random', K =
 
 if __name__ == '__main__':
   # parse_data(featurizer='GraphConv', cold_target=True, filter_threshold=1)
-  parse_data(featurizer='GraphConv', cold_target=True, filter_threshold=1)
-  parse_data(featurizer='GraphConv', cold_drug=True, filter_threshold=1)
-  parse_data(featurizer='GraphConv', split_warm=True, filter_threshold=1)
+  # parse_data(featurizer='GraphConv', cold_target=True, filter_threshold=1)
+  parse_data(dataset_nm='kiba', featurizer='ECFP', cold_drug_cluster=True, filter_threshold=6)
+  # parse_data(dataset_nm='kiba', featurizer='GraphConv', cold_drug_cluster=True, filter_threshold=6)
+  # parse_data(featurizer='GraphConv', split_warm=True, filter_threshold=1)
   # parse_data(dataset_nm='metz', featurizer='GraphConv', split_warm=True, filter_threshold=1)
   # parse_data(dataset_nm='metz', featurizer='GraphConv', cold_drug=True, filter_threshold=1)
   # parse_data(dataset_nm='metz', featurizer='GraphConv', cold_target=True, filter_threshold=1)

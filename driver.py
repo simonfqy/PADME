@@ -205,6 +205,7 @@ def run_analysis(_):
   #drugs and targets are tested or validated.
   cold_drug = FLAGS.cold_drug
   cold_target = FLAGS.cold_target
+  cold_drug_cluster = FLAGS.cold_drug_cluster
   split_warm = FLAGS.split_warm
   filter_threshold = FLAGS.filter_threshold
   early_stopping = FLAGS.early_stopping
@@ -239,7 +240,7 @@ def run_analysis(_):
     test = False 
     restore_model = True               
   else:  
-    assert (predict_cold + cold_drug + cold_target + split_warm) <= 1
+    assert (predict_cold + cold_drug + cold_target + split_warm + cold_drug_cluster) <= 1
 
   assert model == model # Not a NAN
   searchObj = re.search('reg', model, re.I)
@@ -314,8 +315,9 @@ def run_analysis(_):
                                                   cross_validation=cross_validation,
                                                   test=test, split=split, reload=isreload, 
                                                   K = fold_num, mode=mode, predict_cold=predict_cold,
-                                                  cold_drug=cold_drug, cold_target=cold_target,
-                                                  split_warm=split_warm, prot_seq_dict=prot_seq_dict,
+                                                  cold_drug=cold_drug, cold_target=cold_target, 
+                                                  cold_drug_cluster=cold_drug_cluster, split_warm=split_warm, 
+                                                  prot_seq_dict=prot_seq_dict, 
                                                   filter_threshold=filter_threshold, oversampled=oversampled,
                                                   input_protein=input_protein)
   else:
@@ -323,15 +325,15 @@ def run_analysis(_):
                                                   cross_validation=cross_validation,
                                                   test=test, split=split, reload=isreload, mode=mode,
                                                   predict_cold=predict_cold, cold_drug=cold_drug, 
-                                                  cold_target=cold_target, split_warm=split_warm,
-                                                  filter_threshold=filter_threshold, 
+                                                  cold_target=cold_target, cold_drug_cluster=cold_drug_cluster, 
+                                                  split_warm=split_warm, filter_threshold=filter_threshold, 
                                                   prot_seq_dict=prot_seq_dict, oversampled=oversampled,
                                                   input_protein=input_protein)
     
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
   # a validation dataset.
-  #assert False
+  # assert False
   time_start_fitting = time.time()
   train_scores_list = []
   valid_scores_list = []
@@ -484,6 +486,8 @@ def run_analysis(_):
     results_file += '_cold_drug'
   elif cold_target:
     results_file += '_cold_target'
+  if cold_drug_cluster:
+    results_file += '_cold_drug_cluster'
   if cross_validation:
     results_file += '_cv'
 
@@ -659,6 +663,12 @@ if __name__ == '__main__':
       '--cold_target',      
       default=False,
       help='Flag of whether the split will leave "cold" targets in the test data.',
+      action='store_true'
+  )
+  parser.add_argument(
+      '--cold_drug_cluster',      
+      default=False,
+      help='Flag of whether the split will leave "cold cluster" drugs in the test data.',
       action='store_true'
   )
   parser.add_argument(
