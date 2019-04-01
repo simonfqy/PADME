@@ -976,7 +976,7 @@ class RandomSplitter(Splitter):
       unassigned_entries.update(this_mol_entries - entries_preserved - entries_for_training)
 
     # Next need to make sure the corresponding proteins are warm-splitted.
-    for _, this_prot_entries in prot_entries:
+    for _, this_prot_entries in prot_entries.items():
       remain_this_prot_entries = this_prot_entries - removed_entries
       assert len(remain_this_prot_entries) > self.threshold
       assert remain_this_prot_entries == this_prot_entries
