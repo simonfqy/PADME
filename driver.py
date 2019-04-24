@@ -108,6 +108,48 @@ def write_intermediate_file(out_path, intermediate_file, train_scores_list,
     
     write_file_for_a_cv_iteration(writer, train_score, valid_score, model_name, dataset, h, tasks,
       aggregated_tasks, time_finish=None, time_start=None)
+
+
+def write_avg_to_interm_file(out_path, intermediate_file, fold_num, train_scores_list, 
+  valid_scores_list, tasks, dataset, h='CV_average'):
+  
+  model_name = list(train_scores_list[0].keys())[0]
+  num_iteration = len(valid_scores_list)
+  if num_iteration != fold_num:
+    return
+  train_metric_name_to_value_sum = dict() 
+  valid_metric_name_to_value_sum = dict()     
+
+  for train_score, valid_score in zip(train_scores_list, valid_scores_list):
+    train_score_dict = train_score[model_name]
+    valid_score_dict = valid_score[model_name]
+    
+    if len(tasks) > 1:
+      train_score_dict = train_score[model_name]['averaged']
+      valid_score_dict = valid_score[model_name]['averaged']          
+
+    for i in train_score_dict:
+      # i here is the metric name, like 'rms_score'.        
+      this_train_score = train_score_dict[i]
+      this_valid_score = valid_score_dict[i] 
+      if i not in train_metric_name_to_value_sum:
+        train_metric_name_to_value_sum[i] = 0
+        valid_metric_name_to_value_sum[i] = 0
+      train_metric_name_to_value_sum[i] += this_train_score
+      valid_metric_name_to_value_sum[i] += this_valid_score      
+
+  with open(os.path.join(out_path, intermediate_file), 'a') as f:
+    writer = csv.writer(f)
+    for i in train_metric_name_to_value_sum:
+      train_score_avg = train_metric_name_to_value_sum[i] / num_iteration
+      valid_score_avg = valid_metric_name_to_value_sum[i] / num_iteration
+      output_line = [
+              dataset,
+              model_name, i, 'train',
+              train_score_avg, 'valid', valid_score_avg,
+              'fold_num', h
+      ]
+      writer.writerow(output_line)
       
       
 def write_results_file(out_path, results_file, train_scores_list, valid_scores_list, fold_num,
@@ -225,6 +267,7 @@ def run_analysis(_):
   oversampled = FLAGS.oversampled
   input_protein = not FLAGS.no_input_protein
   weighted_metric_of_each_endpoint = FLAGS.weighted_metric_of_each_endpoint
+  remove_val_set_entries = FLAGS.remove_val_set_entries
   
   if aggregate_suffix_file is not None and len(aggregate) > 0:
     aggregate = get_aggregate_list(aggregate_suffix_file, aggregate)
@@ -317,7 +360,8 @@ def run_analysis(_):
                                                   cold_drug_cluster=cold_drug_cluster, split_warm=split_warm, 
                                                   prot_seq_dict=prot_seq_dict, 
                                                   filter_threshold=filter_threshold, oversampled=oversampled,
-                                                  input_protein=input_protein)
+                                                  input_protein=input_protein, 
+                                                  remove_val_set_entries=remove_val_set_entries)
   else:
     tasks, all_dataset, transformers = loading_functions[dataset](featurizer=featurizer, 
                                                   cross_validation=cross_validation,
@@ -326,7 +370,8 @@ def run_analysis(_):
                                                   cold_target=cold_target, cold_drug_cluster=cold_drug_cluster, 
                                                   split_warm=split_warm, filter_threshold=filter_threshold, 
                                                   prot_seq_dict=prot_seq_dict, oversampled=oversampled,
-                                                  input_protein=input_protein)
+                                                  input_protein=input_protein,
+                                                  remove_val_set_entries=remove_val_set_entries)
     
   # all_dataset will be a list of 5 elements (since we will use 5-fold cross validation),
   # each element is a tuple, in which the first entry is a training dataset, the second is
@@ -466,7 +511,10 @@ def run_analysis(_):
       # The section below is a workaround for the instability of the server. I don't like
       # it but guess there is no other choices.
       write_intermediate_file(out_path, intermediate_file, train_scores_list, 
-        valid_scores_list, train_score, valid_score, tasks, dataset, h, aggregated_tasks)      
+        valid_scores_list, train_score, valid_score, tasks, dataset, h, aggregated_tasks)  
+
+    write_avg_to_interm_file(out_path, intermediate_file, fold_num, train_scores_list, 
+      valid_scores_list, tasks, dataset, h='CV_average')    
   
   time_finish_fitting = time.time()
   
@@ -767,7 +815,15 @@ if __name__ == '__main__':
         be pooled together to calculate a metric, as in the case of the ToxCast dataset, it is \
         necessary to set it as True.",
       action='store_true'
-  )  
+  ) 
+   
+  parser.add_argument(
+      '--remove_val_set_entries',      
+      default=False,
+      help='Indicating whether we remove the entries existing in the validation set from the \
+        validation folds of the datasets.',
+      action='store_true'
+  )
 
   FLAGS, unparsed = parser.parse_known_args()
   #pdb.set_trace()
