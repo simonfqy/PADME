@@ -24,7 +24,8 @@ from dcCustom.molnet.check_availability import CheckFeaturizer, CheckSplit
 def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='random', 
   reload=True, K = 5, mode = 'regression', predict_cold = False, cold_drug=False,
   cold_target=False, cold_drug_cluster=False, split_warm=False, filter_threshold=0, 
-  prot_seq_dict=None, currdir="./", oversampled=False, input_protein=True): 
+  prot_seq_dict=None, currdir="./", oversampled=False, input_protein=True, 
+  remove_val_set_entries=False): 
   # The last parameter means only splitting into training and validation sets.
 
   if cross_validation:
@@ -50,7 +51,9 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
     tasks = headers[:-1]
 
   if reload:
-    delim = "/"
+    delim = "_5/"
+    if remove_val_set_entries:
+      delim = "_rmval" + delim
     if not input_protein:
       delim = "_no_prot" + delim
     if filter_threshold > 0:
@@ -76,8 +79,18 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
           save_dir)
     if loaded:
       return tasks, all_dataset, transformers
-  
+
+
+  if remove_val_set_entries:
+    if input_protein:
+      save_dir_val_set = os.path.join(data_dir, featurizer + "/" + mode + "/" + split)
+    else:      
+      save_dir_val_set = os.path.join(data_dir, featurizer + "_cold_drug_no_prot/" + mode + "/" + split)
+  else:
+    save_dir_val_set = None
+
   dataset_file = os.path.join(data_dir, file_name)
+  
   if featurizer == 'Weave':
     featurizer = dcCustom.feat.WeaveFeaturizer()
   elif featurizer == 'ECFP':
@@ -104,12 +117,14 @@ def load_davis(featurizer = 'Weave', cross_validation=False, test=False, split='
   print("About to transform data")
   for transformer in transformers:
     dataset = transformer.transform(dataset)
+
     
   splitters = {
       'index': deepchem.splits.IndexSplitter(),
       'random': dcCustom.splits.RandomSplitter(split_cold=predict_cold, cold_drug=cold_drug,
         cold_target=cold_target, cold_drug_cluster=cold_drug_cluster, split_warm=split_warm, 
-        prot_seq_dict=prot_seq_dict, threshold=filter_threshold, input_protein=input_protein),
+        prot_seq_dict=prot_seq_dict, threshold=filter_threshold, input_protein=input_protein,
+        remove_val_set_entries=remove_val_set_entries, save_dir_val_set=save_dir_val_set),
       'scaffold': deepchem.splits.ScaffoldSplitter(),
       'butina': deepchem.splits.ButinaSplitter(),
       'task': deepchem.splits.TaskSplitter()
