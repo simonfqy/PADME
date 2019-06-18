@@ -4,7 +4,6 @@ from __future__ import print_function
 from __future__ import unicode_literals
 
 import numpy as np
-import tensorflow as tf
 import pandas as pd
 import argparse
 import os
@@ -32,8 +31,10 @@ AR_list_s = [('toxcast', 'P10275')]
 ER_list = [('toxcast', 'P03372'), ('toxcast', 'P19785'), ('toxcast', 'P49884'), 
   ('toxcast', 'Q92731')]
 ER_list_s = [('toxcast', 'P03372')]
-AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
-AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+# AR_toxcast_codes = ['6620', '8110', '8010', '7100', '7200', '3100', '7300', '8100', '8000']
+# AR_antagonist_score_coef = [1, 0.5, 0.5, -0.5, -0.5, -1, -1/3, -1/3, -1/3]
+AR_toxcast_codes = ['6620']
+AR_antagonist_score_coef = [1]
 # AR_toxcast_codes = ['6620', '8110', '8010']
 # AR_antagonist_score_coef = [1, 0.5, 0.5]
 #AR_antagonist_score_coef = [1.] + [0.]*8
@@ -372,9 +373,11 @@ def get_highest_similarity_for_mol(fp, fp_list_to_compare):
   return max_sim
 
 
-def get_highest_similarity(input_file, output_file, comparison_file='../full_toxcast/restructured.csv'):
+def get_highest_similarity(input_file, output_file, comparison_file='../full_toxcast/restructured.csv',
+  top_compounds_only=True, num_compounds=1500):
   df_avg = pd.read_csv(input_file, header=0, index_col=False)
-  df_avg = df_avg.head(1500)
+  if top_compounds_only:
+    df_avg = df_avg.head(num_compounds)
   smiles_list = df_avg['smiles']
   avg_scores = df_avg['avg_score']
   # default_mol = Chem.MolFromSmiles('CCCC')
@@ -1562,20 +1565,21 @@ if __name__ == "__main__":
   # produce_dataset(dataset_used=dataset, prot_desc_path_list=['../full_toxcast/prot_desc.csv'], 
   #   get_all_compounds=True, take_mol_subset=False, prot_pairs_to_choose=AR_list_s + ER_list_s)
   #produce_dataset(dataset_used=dataset, output_prefix="all_prot_intxn")
-  # synthesize_ranking('preds_arer_tc_graphconv_oversp.csv', 'ordered_arer_tc_gc.csv', 
-  #   weigh_by_occurrence=True, AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, direction=False)   
+  # synthesize_ranking('preds_arer_tc_ecfp.csv', 'ordered_arer_tc_ecfp_6620.csv', 
+  #   AR_toxcast_codes=AR_toxcast_codes, dataset_used=dataset, AR_score_coef=AR_antagonist_score_coef)   
   # synthesize_ranking('preds_arer_tc_graphconv_oversp.csv', 'ordered_arer_tc_gc_oversp.csv', 
   #   direction=True, dataset_used=dataset, AR_toxcast_codes=AR_toxcast_codes, 
   #   AR_score_coef=AR_antagonist_score_coef)
   # compare('avg_ar_tc.csv', 'avg_ar_tc_oversp.csv', cutoff=100, 
   #   exclude_prot=ER_list_s)
   #get_invalid_smiles(out_file = 'invalid_smiles.csv')  
-  # get_avg(input_files_list=['ordered_arer_tc_ecfp_oversp.csv', 'ordered_arer_tc_gc_oversp.csv'], 
-  #   output_file_name = 'avg_ar_tc_oversp.csv', exclude_prot=ER_list_s)
-  # get_highest_similarity(input_file='avg_ar_tc.csv', output_file='avg_ar_tc_similarity_rdkit.csv',
-  #   comparison_file='../full_toxcast/restructured.csv')
-  filter_similarity(input_file='avg_ar_tc_similarity_rdkit.csv', 
-    output_file='avg_ar_tc_sim_rdkit_subset.csv', threshold=0.85, limit=True)
+  # get_avg(input_files_list=['ordered_arer_tc_ecfp_6620.csv', 'ordered_arer_tc_gc_6620.csv'], 
+  #   output_file_name = 'avg_ar_tc_6620.csv', exclude_prot=ER_list_s)
+
+  # get_highest_similarity(input_file='avg_ar_tc_6620.csv', output_file='avg_ar_tc_6620_similarity_rdkit.csv',
+  #   comparison_file='../full_toxcast/restructured.csv', num_compounds=1800)
+  # filter_similarity(input_file='avg_ar_tc_6620_similarity_rdkit.csv', 
+  #   output_file='avg_ar_tc_6620_sim_rdkit_subset.csv', draw_2d_image=False, threshold=0.98, limit=False, limit_lines=10)
   #calculate_mean_activity('avg_ar_tc.csv')
   #calculate_ndcg('avg_ar_tc.csv')
   #calc_subsets_cindex('avg_ar_tc.csv')
