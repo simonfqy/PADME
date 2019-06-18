@@ -64,7 +64,8 @@ class Splitter(object):
 
   def __init__(self, verbose=False, split_cold=False, cold_drug=False, cold_target=False,
     prot_seq_dict=None, split_warm=False, cold_drug_cluster=False, threshold=0, 
-    oversampled=False, input_protein=True, do_cv=False, total_folds=None, current_fold_ind=0):
+    oversampled=False, input_protein=True, do_cv=False, total_folds=None, current_fold_ind=0,
+    remove_val_set_entries=False, save_dir_val_set=None):
     """Creates splitter object."""
     self.verbose = verbose
     self.split_cold = split_cold
@@ -78,7 +79,10 @@ class Splitter(object):
     self.input_protein = input_protein
     self.do_cv = do_cv
     self.total_folds = total_folds
-    self.current_fold_ind = current_fold_ind
+    self.current_fold_ind = current_fold_ind    
+    self.remove_val_set_entries=remove_val_set_entries
+    self.save_dir_val_set = save_dir_val_set
+
 
   def k_fold_split(self, dataset, k, directories=None, **kwargs):
     """
@@ -150,7 +154,11 @@ class Splitter(object):
       train_ds_base = DiskDataset.merge(update_train_base_merge)
       if self.oversampled:
         cv_dataset = cv_dataset.get_unique_pairs()
-        #pdb.set_trace()      
+      if self.remove_val_set_entries:    
+        print('length before removal: ', len(cv_dataset.X))    
+        cv_dataset.remove_validation_set_entries(save_dir_val_set=self.save_dir_val_set) 
+        print('length after removal: ', len(cv_dataset.X))           
+             
       cv_datasets.append(cv_dataset)
     return list(zip(train_datasets, cv_datasets))
 
