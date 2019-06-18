@@ -10,9 +10,10 @@ import math
 import numpy as np
 import pandas as pd
 import random
-from deepchem.utils.save import save_to_disk, save_metadata
-from deepchem.utils.save import load_from_disk
-from deepchem.utils.save import log
+from dcCustom.utils.save import save_to_disk, save_metadata
+from dcCustom.utils.save import load_from_disk
+from dcCustom.utils.save import log
+import dcCustom
 from pandas import read_hdf
 import tempfile
 import time
@@ -742,7 +743,7 @@ class DiskDataset(Dataset):
 
 
     """
-
+   
     def iterate(dataset, batch_size):
       num_shards = dataset.get_number_shards()
       if not deterministic:
@@ -1269,6 +1270,45 @@ class DiskDataset(Dataset):
     self.metadata_df = filtered_dataset.metadata_df
     self.save_to_disk()
     return self
+
+
+  def remove_validation_set_entries(self, save_dir_val_set=None):
+    if save_dir_val_set is None:
+      raise ValueError('save_dir_val_set cannot be None.')
+    loaded, all_dataset, _ = dcCustom.utils.save.load_dataset_from_disk(save_dir_val_set)
+    if not loaded:
+      raise ValueError('The save_dir_val_set does not give a loadable dataset.')
+    _, validation_set, _ = all_dataset
+    
+    validation_set_x_entries = set([tuple(entry) for entry in validation_set.X])
+        
+    # Then we traverse the dataset.
+    X_vector = self.X
+    y_vector = self.y
+    w_vector = self.w
+    ids_vector = self.ids
+    unique_pair_inds = []    
+    for i, x_entry in enumerate(X_vector):
+      entry = tuple(x_entry)      
+      if entry not in validation_set_x_entries:
+        unique_pair_inds.append(i)
+    X = X_vector[unique_pair_inds]
+    y = y_vector[unique_pair_inds]
+    w = w_vector[unique_pair_inds]
+    ids = ids_vector[unique_pair_inds]
+    temp_dir = tempfile.mkdtemp()
+
+    filtered_dataset = DiskDataset.from_numpy(X,
+                 y,
+                 w=w,
+                 ids = ids,                 
+                 tasks=self.tasks,
+                 data_dir=temp_dir)
+    shutil.rmtree(self.data_dir)
+    shutil.move(temp_dir, self.data_dir)
+    self.metadata_df = filtered_dataset.metadata_df
+    self.save_to_disk()
+
 
   def get_shape(self):
     """Finds shape of dataset."""

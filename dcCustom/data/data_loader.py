@@ -197,7 +197,8 @@ class DataLoader(object):
                source_field=None,               
                verbose=True,
                prot_seq_dict=None,
-               log_every_n=1000):
+               log_every_n=1000,
+               input_protein=True):
     """Extracts data from input as Pandas data frame"""
     if not isinstance(tasks, list):
       raise ValueError("tasks must be a list.")
@@ -217,6 +218,7 @@ class DataLoader(object):
       self.user_specified_features = featurizer.feature_fields
     self.featurizer = featurizer
     self.log_every_n = log_every_n
+    self.input_protein = input_protein
 
   def featurize(self, input_files, data_dir=None, shard_size=8192):
     """Featurize provided files and write to specified location.
@@ -289,9 +291,12 @@ class CSVLoader(DataLoader):
     mol_features, valid_inds = featurize_smiles_df(shard, self.featurizer, field=self.smiles_field)
     if len(mol_features.shape) > 2:
       mol_features = np.squeeze(mol_features)
-    proteins = featurize_protein(shard, field=self.protein_field, source_field=self.source_field,
-      prot_seq_dict=self.prot_seq_dict)
-    # Note: for ECFP with 1024 entries, mol_features is a (8192, 1024) sized array.    
-    return np.concatenate((mol_features, proteins), axis=1), valid_inds
+    if self.input_protein:
+      proteins = featurize_protein(shard, field=self.protein_field, source_field=self.source_field,
+        prot_seq_dict=self.prot_seq_dict)
+      # Note: for ECFP with 1024 entries, mol_features is a (8192, 1024) sized array.    
+      return np.concatenate((mol_features, proteins), axis=1), valid_inds
+    else:
+      return mol_features, valid_inds
 
 
