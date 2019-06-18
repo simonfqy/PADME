@@ -284,9 +284,9 @@ def load_dataset_from_disk(save_dir):
       valid_dir) or not os.path.exists(test_dir):
     return False, None, list()
   loaded = True
-  train = deepchem.data.DiskDataset(train_dir)
-  valid = deepchem.data.DiskDataset(valid_dir)
-  test = deepchem.data.DiskDataset(test_dir)
+  train = dcCustom.data.DiskDataset(train_dir)
+  valid = dcCustom.data.DiskDataset(valid_dir)
+  test = dcCustom.data.DiskDataset(test_dir)
   all_dataset = (train, valid, test)
   with open(os.path.join(save_dir, "transformers.pkl"), 'rb') as f:
     transformers = pickle.load(f)
