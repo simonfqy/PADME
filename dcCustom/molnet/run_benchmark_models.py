@@ -44,7 +44,9 @@ def model_regression(
             aggregated_tasks=[],
             predict_only=False,
             restore_model=False,
-            prediction_file=None):
+            prediction_file=None,
+            input_protein=True):
+
   train_scores = {}
   valid_scores = {}
   test_scores = {}
@@ -84,7 +86,8 @@ def model_regression(
         model_dir = model_dir,
         prot_desc_dict=prot_desc_dict,
         prot_desc_length=prot_desc_length,
-        restore_model=restore_model)
+        restore_model=restore_model,
+        input_protein=input_protein)
         
   elif model_name == 'mpnn':
     batch_size = hyper_parameters['batch_size']
@@ -151,7 +154,8 @@ def model_regression(
         model_dir = model_dir,
         prot_desc_dict=prot_desc_dict,
         prot_desc_length=prot_desc_length,
-        restore_model=restore_model)
+        restore_model=restore_model,
+        input_protein=input_protein)
   
   elif model_name == 'weave_regression':
     batch_size = hyper_parameters['batch_size']
@@ -278,7 +282,8 @@ def model_classification(
             aggregated_tasks=[],
             predict_only=False,
             restore_model=False,
-            prediction_file=None):
+            prediction_file=None,
+            input_protein=True):
   
   train_scores = {}
   valid_scores = {}

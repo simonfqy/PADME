@@ -122,27 +122,50 @@ hps['xgb'] = {
 }
 
 # Original parameter setting.
-hps['tf_regression'] = {
-    'layer_sizes': [1000, 1000],
-    'weight_init_stddevs': [0.02, 0.02],
-    'bias_init_consts': [1., 1.],
-    'dropouts': [0.25, 0.25],
-    #'dropout_prob': 0.105,
-    'dropout_prob': 0.262,
-    'penalty': 0.0005,
-    'penalty_type': 'l2',
-    #'batch_size': 128,
-    'batch_size': 155,
-    'nb_epoch': 180,
-    #'nb_epoch': 66,
-    #'nb_epoch': 2,
-    #'learning_rate': 0.0008,
-    'learning_rate': 0.000311,
-    #'num_dense_layer': 3,
-    'num_dense_layer': 2,
-    #'dense_cmb_layer_size': 512
-    'dense_cmb_layer_size': 1211
-}
+# hps['tf_regression'] = {
+#     'layer_sizes': [1000, 1000],
+#     'weight_init_stddevs': [0.02, 0.02],
+#     'bias_init_consts': [1., 1.],
+#     'dropouts': [0.25, 0.25],
+#     #'dropout_prob': 0.105,
+#     'dropout_prob': 0.262,
+#     'penalty': 0.0005,
+#     'penalty_type': 'l2',
+#     #'batch_size': 128,
+#     'batch_size': 155,
+#     # 'nb_epoch': 180,
+#     #'nb_epoch': 66,
+#     'nb_epoch': 1,
+#     #'learning_rate': 0.0008,
+#     'learning_rate': 0.000311,
+#     #'num_dense_layer': 3,
+#     'num_dense_layer': 2,
+#     #'dense_cmb_layer_size': 512
+#     'dense_cmb_layer_size': 1211
+# }
+
+# Hyperparameter setting for non-protein models.
+# hps['tf_regression'] = {
+#     'layer_sizes': [1000, 1000],
+#     'weight_init_stddevs': [0.02, 0.02],
+#     'bias_init_consts': [1., 1.],
+#     'dropouts': [0.25, 0.25],
+#     #'dropout_prob': 0.105,
+#     'dropout_prob': 0.262,
+#     'penalty': 0.0005,
+#     'penalty_type': 'l2',
+#     #'batch_size': 128,
+#     'batch_size': 20,
+#     'nb_epoch': 210,
+#     #'nb_epoch': 66,
+#     # 'nb_epoch': 1,
+#     #'learning_rate': 0.0008,
+#     'learning_rate': 0.000311,
+#     #'num_dense_layer': 3,
+#     'num_dense_layer': 2,
+#     #'dense_cmb_layer_size': 512
+#     'dense_cmb_layer_size': 1211
+# }
 
 # Only for the cross-validation of Davis data. Should comment out after use.
 # hps['tf_regression'] = {
@@ -155,10 +178,28 @@ hps['tf_regression'] = {
 #     'penalty_type': 'l2',
 #     'batch_size': 241,
 #     'nb_epoch': 96,
+#     # 'nb_epoch': 1,
 #     'learning_rate': 0.0002716797985777158,
 #     'num_dense_layer': 2,
 #     'dense_cmb_layer_size': 1835
 # }
+
+
+# Only for the cross-validation of Davis data without protein input.
+hps['tf_regression'] = {
+    'layer_sizes': [1000, 1000],
+    'weight_init_stddevs': [0.02, 0.02],
+    'bias_init_consts': [1., 1.],
+    'dropouts': [0.25, 0.25],    
+    'dropout_prob': 0.7185628750395749,
+    'penalty': 0.00017990505653176555,
+    'penalty_type': 'l2',
+    'batch_size': 10,
+    'nb_epoch': 30,    
+    'learning_rate': 0.0007379772901945139,
+    'num_dense_layer': 4,
+    'dense_cmb_layer_size': 1070
+}
 
 # Only for the cross-validation of Metz data. Should comment out after use.
 # hps['tf_regression'] = {
@@ -174,6 +215,22 @@ hps['tf_regression'] = {
 #     'learning_rate': 0.0004810601402976117,
 #     'num_dense_layer': 3,
 #     'dense_cmb_layer_size': 2077
+# }
+
+# Only for the cross-validation of Metz data without protein input.
+# hps['tf_regression'] = {
+#     'layer_sizes': [1000, 1000],
+#     'weight_init_stddevs': [0.02, 0.02],
+#     'bias_init_consts': [1., 1.],
+#     'dropouts': [0.25, 0.25],    
+#     'dropout_prob': 0.46316185232876145,
+#     'penalty': 0.0004873690821729453,
+#     'penalty_type': 'l2',
+#     'batch_size': 44,
+#     'nb_epoch': 15,    
+#     'learning_rate': 0.0004033871463871746,
+#     'num_dense_layer': 5,
+#     'dense_cmb_layer_size': 1426
 # }
 
 # Only for the cross-validation of KIBA data. Should comment out after use.
@@ -192,6 +249,24 @@ hps['tf_regression'] = {
 #     'dense_cmb_layer_size': 2912
 # }
 
+
+# Only for the cross-validation of KIBA data without protein input.
+# hps['tf_regression'] = {
+#     'layer_sizes': [1000, 1000],
+#     'weight_init_stddevs': [0.02, 0.02],
+#     'bias_init_consts': [1., 1.],
+#     'dropouts': [0.25, 0.25],    
+#     'dropout_prob': 0.08733333333333333,
+#     'penalty': 0.0008476867546437254,
+#     'penalty_type': 'l2',
+#     'batch_size': 15,
+#     'nb_epoch': 51, 
+#     # 'nb_epoch': 1,      
+#     'learning_rate': 0.00010366666666666667,
+#     'num_dense_layer': 3,
+#     'dense_cmb_layer_size': 2700
+# }
+
 # Only for the cross-validation of ToxCast data. Should comment out after use.
 # hps['tf_regression'] = {
 #     'layer_sizes': [1000, 1000],
@@ -202,10 +277,29 @@ hps['tf_regression'] = {
 #     'penalty': 0.00027464802527002224,
 #     'penalty_type': 'l2',
 #     'batch_size': 282,
-#     'nb_epoch': 63,    
+#     'nb_epoch': 63,
+#     # 'nb_epoch': 0,    
 #     'learning_rate': 0.0002963697439738725,
 #     'num_dense_layer': 2,
 #     'dense_cmb_layer_size': 3026
+# }
+
+
+# Only for the cross-validation of ToxCast data without protein input.
+# hps['tf_regression'] = {
+#     'layer_sizes': [1000, 1000],
+#     'weight_init_stddevs': [0.02, 0.02],
+#     'bias_init_consts': [1., 1.],
+#     'dropouts': [0.25, 0.25],    
+#     'dropout_prob': 0.1563334449308726,
+#     'penalty': 0.0010062413162415507,
+#     'penalty_type': 'l2',
+#     'batch_size': 33,
+#     'nb_epoch': 15, 
+#     # 'nb_epoch': 1,      
+#     'learning_rate': 0.0007399192282290668,
+#     'num_dense_layer': 4,
+#     'dense_cmb_layer_size': 3432
 # }
 
 
@@ -225,26 +319,48 @@ hps['rf_regression'] = {'n_estimators': 500}
 hps['krr'] = {'alpha': 1e-3}
 hps['krr_ft'] = {'alpha': 1e-3}
 # This is the original parameter setting.
-hps['graphconvreg'] = {
-    'batch_size': 128,
-    #'batch_size': 86, 
-    'nb_epoch': 180,
-    #'nb_epoch': 2,
-    #'nb_epoch': 63,
-    #'learning_rate': 0.0002,
-    'learning_rate': 9.789365954742421e-05,
-    'n_filters': 128,
-    #'n_filters': 160,
-    'n_fully_connected_nodes': 256,
-    #'n_fully_connected_nodes': 492,
-    'dropout_prob': 0.1,
-    #'dropout_prob': 0.03567783932490167,
-    'num_dense_layer': 3,
-    #'num_dense_layer': 8,
-    'dense_cmb_layer_size': 512,
-    #'dense_cmb_layer_size': 1317,
-    'seed': 123
-}
+# hps['graphconvreg'] = {
+#     'batch_size': 128,
+#     #'batch_size': 86, 
+#     'nb_epoch': 180,
+#     #'nb_epoch': 2,
+#     #'nb_epoch': 63,
+#     #'learning_rate': 0.0002,
+#     'learning_rate': 9.789365954742421e-05,
+#     'n_filters': 128,
+#     #'n_filters': 160,
+#     'n_fully_connected_nodes': 256,
+#     #'n_fully_connected_nodes': 492,
+#     'dropout_prob': 0.1,
+#     #'dropout_prob': 0.03567783932490167,
+#     'num_dense_layer': 3,
+#     #'num_dense_layer': 8,
+#     'dense_cmb_layer_size': 512,
+#     #'dense_cmb_layer_size': 1317,
+#     'seed': 123
+# }
+
+# Hyperparameter setting for non-protein model.
+# hps['graphconvreg'] = {
+#     'batch_size': 20,
+#     #'batch_size': 86, 
+#     'nb_epoch': 210,
+#     #'nb_epoch': 2,
+#     #'nb_epoch': 63,
+#     #'learning_rate': 0.0002,
+#     'learning_rate': 9.789365954742421e-05,
+#     'n_filters': 128,
+#     #'n_filters': 160,
+#     'n_fully_connected_nodes': 256,
+#     #'n_fully_connected_nodes': 492,
+#     'dropout_prob': 0.1,
+#     #'dropout_prob': 0.03567783932490167,
+#     'num_dense_layer': 3,
+#     #'num_dense_layer': 8,
+#     'dense_cmb_layer_size': 512,
+#     #'dense_cmb_layer_size': 1317,
+#     'seed': 123
+# }
 
 # This is for Davis dataset cross-validation only. 
 # hps['graphconvreg'] = {
@@ -258,6 +374,20 @@ hps['graphconvreg'] = {
 #     'dense_cmb_layer_size': 1426,
 #     'seed': 123
 # }
+
+
+# For Davis dataset cross-validation without protein information.
+hps['graphconvreg'] = {
+    'batch_size': 45,
+    'nb_epoch': 63,
+    'learning_rate': 0.00022334286034487728,
+    'n_filters': 120,
+    'n_fully_connected_nodes': 221,
+    'dropout_prob': 0.16578987907249845,
+    'num_dense_layer': 6,
+    'dense_cmb_layer_size': 1272,
+    'seed': 123
+}
 
 # This is for Metz dataset cross-validation only. 
 # hps['graphconvreg'] = {
@@ -273,6 +403,19 @@ hps['graphconvreg'] = {
 # }
 
 
+# For Metz dataset cross-validation without protein information.
+# hps['graphconvreg'] = {
+#     'batch_size': 10,
+#     'nb_epoch': 57,    
+#     'learning_rate': 0.0001875038140127496,
+#     'n_filters': 269,
+#     'n_fully_connected_nodes': 699,
+#     'dropout_prob': 0.05903844392667261,
+#     'num_dense_layer': 2,
+#     'dense_cmb_layer_size': 1260,
+#     'seed': 123
+# }
+
 # This is for KIBA dataset cross-validation only. 
 # hps['graphconvreg'] = {
 #     'batch_size': 138,
@@ -286,10 +429,26 @@ hps['graphconvreg'] = {
 #     'seed': 123
 # }
 
+
+# For KIBA dataset cross-validation without protein information.
+# hps['graphconvreg'] = {
+#     'batch_size': 24,
+#     'nb_epoch': 153,    
+#     'learning_rate': 0.0001611140951447105,
+#     'n_filters': 135,
+#     'n_fully_connected_nodes': 485,
+#     'dropout_prob': 0.16571835288622494,
+#     'num_dense_layer': 2,
+#     'dense_cmb_layer_size': 972,
+#     'seed': 123
+# }
+
+
 # This is for ToxCast dataset cross-validation only. 
 # hps['graphconvreg'] = {
 #     'batch_size': 48,
 #     'nb_epoch': 15,
+#     # 'nb_epoch': 1,
 #     'learning_rate': 7.631013399995731e-05,
 #     'n_filters': 306,
 #     'n_fully_connected_nodes': 572,
@@ -299,6 +458,19 @@ hps['graphconvreg'] = {
 #     'seed': 123
 # }
 
+
+# For ToxCast dataset cross-validation without protein information.
+# hps['graphconvreg'] = {
+#     'batch_size': 26,
+#     'nb_epoch': 42,    
+#     'learning_rate': 0.00012966101558519458,
+#     'n_filters': 95,
+#     'n_fully_connected_nodes': 492,
+#     'dropout_prob': 0.2752876235047465,
+#     'num_dense_layer': 3,
+#     'dense_cmb_layer_size': 638,
+#     'seed': 123
+# }
 
 hps['dtnn'] = {
     'batch_size': 64,
